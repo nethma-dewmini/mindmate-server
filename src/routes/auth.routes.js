@@ -54,12 +54,10 @@ router.post("/register", async (req, res, next) => {
   try {
     const { name, email, password, role, studentId } = req.body || {};
     if (!name || !email || !password) {
-      return res
-        .status(400)
-        .json({
-          status: "error",
-          message: "name, email and password are required",
-        });
+      return res.status(400).json({
+        status: "error",
+        message: "name, email and password are required",
+      });
     }
 
     const normalizedEmail = String(email).toLowerCase();
@@ -101,12 +99,10 @@ router.post("/register", async (req, res, next) => {
       [normalizedEmail],
     );
     if (existing.rows.length > 0) {
-      return res
-        .status(409)
-        .json({
-          status: "error",
-          message: "User with that email already exists",
-        });
+      return res.status(409).json({
+        status: "error",
+        message: "User with that email already exists",
+      });
     }
 
     if (role === "student") {
