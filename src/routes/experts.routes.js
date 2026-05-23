@@ -25,7 +25,7 @@ router.get("/", async (req, res, next) => {
         u.bio,
         u.is_verified
       FROM experts e
-      LEFT JOIN users u ON u.id = e.user_id
+        LEFT JOIN unistudents u ON u.id = e.user_id
       ${verifiedOnly ? "WHERE e.verified_at IS NOT NULL" : ""}
       ORDER BY e.created_at DESC
     `;
@@ -63,7 +63,7 @@ router.get("/:id", async (req, res, next) => {
           u.bio,
           u.is_verified
         FROM experts e
-        LEFT JOIN users u ON u.id = e.user_id
+        LEFT JOIN unistudents u ON u.id = e.user_id
         WHERE e.id = $1
         LIMIT 1
       `,

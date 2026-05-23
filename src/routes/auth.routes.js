@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const db = require("../db");
 
 const UOM_INDEX_LETTER_MAP = {
@@ -53,14 +54,21 @@ function getExpectedUomIndexLetter(indexNumber) {
 // Handles both student and expert registration
 router.post("/register", async (req, res, next) => {
   try {
-    const { name, email, password, role, studentId } = req.body || {};
+    const {
+      name,
+      email,
+      password,
+      role,
+      studentId,
+      specialization,
+      qualifications,
+      licenseNumber,
+    } = req.body || {};
     if (!name || !email || !password) {
-      return res
-        .status(400)
-        .json({
-          status: "error",
-          message: "name, email and password are required",
-        });
+      return res.status(400).json({
+        status: "error",
+        message: "name, email and password are required",
+      });
     }
 
     const normalizedEmail = String(email).toLowerCase();
@@ -98,21 +106,19 @@ router.post("/register", async (req, res, next) => {
 
     // check existing user
     const existing = await db.query(
-      "SELECT id, email FROM users WHERE email = $1",
+      "SELECT id, email FROM unistudents WHERE email = $1",
       [normalizedEmail],
     );
     if (existing.rows.length > 0) {
-      return res
-        .status(409)
-        .json({
-          status: "error",
-          message: "User with that email already exists",
-        });
+      return res.status(409).json({
+        status: "error",
+        message: "User with that email already exists",
+      });
     }
 
     if (role === "student") {
       const existingRegistration = await db.query(
-        "SELECT id FROM users WHERE registration_no = $1",
+        "SELECT id FROM unistudents WHERE registration_no = $1",
         [studentId],
       );
       if (existingRegistration.rows.length > 0) {
@@ -129,10 +135,10 @@ router.post("/register", async (req, res, next) => {
 
     const insertSql =
       role === "student"
-        ? `INSERT INTO users (name, email, password_hash, role, registration_no, created_at, updated_at)
+        ? `INSERT INTO unistudents (name, email, password_hash, role, registration_no, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
          RETURNING id, name, email, role, registration_no, created_at`
-        : `INSERT INTO users (name, email, password_hash, role, created_at, updated_at)
+        : `INSERT INTO unistudents (name, email, password_hash, role, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())
          RETURNING id, name, email, role, created_at`;
 
@@ -143,6 +149,13 @@ router.post("/register", async (req, res, next) => {
 
     const result = await db.query(insertSql, values);
     resultUser = result.rows[0];
+
+    // Issue JWT for the newly created user
+    const token = jwt.sign(
+      { id: resultUser.id, role: resultUser.role || role },
+      process.env.JWT_SECRET || "dev_jwt_secret",
+      { expiresIn: "7d" },
+    );
 
     // If expert, create expert profile
     if (
@@ -165,6 +178,7 @@ router.post("/register", async (req, res, next) => {
       status: "ok",
       message: "Registration successful",
       user: resultUser,
+      token,
     });
   } catch (err) {
     next(err);
@@ -186,7 +200,7 @@ router.post("/login", async (req, res, next) => {
 
     // Get user by email
     const result = await db.query(
-      `SELECT id, name, email, password_hash, role, registration_no FROM users 
+      `SELECT id, name, email, password_hash, role, registration_no FROM unistudents 
        WHERE email = $1`,
       [email.toLowerCase()],
     );
@@ -209,13 +223,19 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    // Return user without password hash
+    // Return user without password hash and issue JWT
     const { password_hash, ...userWithoutPassword } = user;
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || "dev_jwt_secret",
+      { expiresIn: "7d" },
+    );
 
     return res.status(200).json({
       status: "ok",
       message: "Login successful",
       user: userWithoutPassword,
+      token,
     });
   } catch (err) {
     next(err);
