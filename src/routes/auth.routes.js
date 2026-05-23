@@ -96,7 +96,7 @@ router.post("/register", async (req, res, next) => {
 
     // check existing user
     const existing = await db.query(
-      "SELECT id, email FROM users WHERE email = $1",
+      "SELECT id, email FROM unistudents WHERE email = $1",
       [normalizedEmail],
     );
     if (existing.rows.length > 0) {
@@ -108,7 +108,7 @@ router.post("/register", async (req, res, next) => {
 
     if (role === "student") {
       const existingRegistration = await db.query(
-        "SELECT id FROM users WHERE registration_no = $1",
+        "SELECT id FROM unistudents WHERE registration_no = $1",
         [studentId],
       );
       if (existingRegistration.rows.length > 0) {
@@ -125,10 +125,10 @@ router.post("/register", async (req, res, next) => {
 
     const insertSql =
       role === "student"
-        ? `INSERT INTO users (name, email, password_hash, role, registration_no, created_at, updated_at)
+        ? `INSERT INTO unistudents (name, email, password_hash, role, registration_no, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
          RETURNING id, name, email, role, registration_no, created_at`
-        : `INSERT INTO users (name, email, password_hash, role, created_at, updated_at)
+        : `INSERT INTO unistudents (name, email, password_hash, role, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())
          RETURNING id, name, email, role, created_at`;
 
@@ -182,7 +182,7 @@ router.post("/login", async (req, res, next) => {
 
     // Get user by email
     const result = await db.query(
-      `SELECT id, name, email, password_hash, role, registration_no FROM users 
+      `SELECT id, name, email, password_hash, role, registration_no FROM unistudents 
        WHERE email = $1`,
       [email.toLowerCase()],
     );
