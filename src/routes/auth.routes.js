@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const db = require("../db");
 
 const UOM_INDEX_LETTER_MAP = {
@@ -53,7 +54,16 @@ function getExpectedUomIndexLetter(indexNumber) {
 // Handles both student and expert registration
 router.post("/register", async (req, res, next) => {
   try {
-    const { name, email, password, role, studentId } = req.body || {};
+    const {
+      name,
+      email,
+      password,
+      role,
+      studentId,
+      specialization,
+      qualifications,
+      licenseNumber,
+    } = req.body || {};
     if (!name || !email || !password) {
       return res.status(400).json({
         status: "error",
@@ -140,6 +150,13 @@ router.post("/register", async (req, res, next) => {
     const result = await db.query(insertSql, values);
     resultUser = result.rows[0];
 
+    // Issue JWT for the newly created user
+    const token = jwt.sign(
+      { id: resultUser.id, role: resultUser.role || role },
+      process.env.JWT_SECRET || "dev_jwt_secret",
+      { expiresIn: "7d" },
+    );
+
     // If expert, create expert profile
     if (
       role === "expert" &&
@@ -161,6 +178,7 @@ router.post("/register", async (req, res, next) => {
       status: "ok",
       message: "Registration successful",
       user: resultUser,
+      token,
     });
   } catch (err) {
     next(err);
@@ -205,13 +223,19 @@ router.post("/login", async (req, res, next) => {
       });
     }
 
-    // Return user without password hash
+    // Return user without password hash and issue JWT
     const { password_hash, ...userWithoutPassword } = user;
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || "dev_jwt_secret",
+      { expiresIn: "7d" },
+    );
 
     return res.status(200).json({
       status: "ok",
       message: "Login successful",
       user: userWithoutPassword,
+      token,
     });
   } catch (err) {
     next(err);
