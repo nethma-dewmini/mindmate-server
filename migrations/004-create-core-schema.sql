@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT,
   is_verified BOOLEAN DEFAULT FALSE,
   registration_no TEXT UNIQUE,
-  avatar_url TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

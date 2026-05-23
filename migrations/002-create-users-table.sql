@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   registration_no TEXT UNIQUE, -- For students only (format: 2250***)
   phone TEXT,
   bio TEXT,
-  avatar_url TEXT, -- Profile picture URL
+  -- avatar_url removed
   is_verified BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
