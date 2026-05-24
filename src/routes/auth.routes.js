@@ -50,6 +50,25 @@ function getExpectedUomIndexLetter(indexNumber) {
   return providedLetter === expectedLetter ? expectedLetter : null;
 }
 
+function normalizeStudentEmail(email) {
+  return String(email || "")
+    .trim()
+    .toLowerCase();
+}
+
+async function findRegistryStudent(registrationNo, email) {
+  const result = await db.query(
+    `SELECT registration_no, name, email
+     FROM student_registry
+     WHERE registration_no = $1
+       AND LOWER(email) = LOWER($2)
+     LIMIT 1`,
+    [String(registrationNo || "").trim(), normalizeStudentEmail(email)],
+  );
+
+  return result.rows[0] || null;
+}
+
 // POST /api/auth/register
 // Handles both student and expert registration
 router.post("/register", async (req, res, next) => {
@@ -71,7 +90,7 @@ router.post("/register", async (req, res, next) => {
       });
     }
 
-    const normalizedEmail = String(email).toLowerCase();
+    const normalizedEmail = normalizeStudentEmail(email);
 
     if (!role || !["student", "expert"].includes(role)) {
       return res.status(400).json({
@@ -100,6 +119,29 @@ router.post("/register", async (req, res, next) => {
           status: "error",
           message:
             "Invalid Registration No. Use a 6-digit UOM index number followed by the correct letter, for example 225015L",
+        });
+      }
+
+      const registryStudent = await findRegistryStudent(
+        studentId,
+        normalizedEmail,
+      );
+      if (!registryStudent) {
+        return res.status(403).json({
+          status: "error",
+          message:
+            "Student record not found in university registry. Please use your official UOM registration number and university email.",
+        });
+      }
+
+      if (
+        registryStudent.name &&
+        String(registryStudent.name).trim().toLowerCase() !==
+          String(name).trim().toLowerCase()
+      ) {
+        return res.status(403).json({
+          status: "error",
+          message: "Name does not match the university registry record",
         });
       }
     }
@@ -148,14 +190,7 @@ router.post("/register", async (req, res, next) => {
         : [name, normalizedEmail, hash, role];
 
     const result = await db.query(insertSql, values);
-    resultUser = result.rows[0];
-
-    // Issue JWT for the newly created user
-    const token = jwt.sign(
-      { id: resultUser.id, role: resultUser.role || role },
-      process.env.JWT_SECRET || "dev_jwt_secret",
-      { expiresIn: "7d" },
-    );
+    const resultUser = result.rows[0];
 
     // If expert, create expert profile
     if (
@@ -173,6 +208,21 @@ router.post("/register", async (req, res, next) => {
         ],
       );
     }
+
+    if (role === "student") {
+      return res.status(201).json({
+        status: "ok",
+        message: "Registration successful",
+        user: resultUser,
+      });
+    }
+
+    // Issue JWT for the newly created user
+    const token = jwt.sign(
+      { id: resultUser.id, role: resultUser.role || role },
+      process.env.JWT_SECRET || "dev_jwt_secret",
+      { expiresIn: "7d" },
+    );
 
     return res.status(201).json({
       status: "ok",
