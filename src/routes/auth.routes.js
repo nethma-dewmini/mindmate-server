@@ -56,6 +56,12 @@ function normalizeStudentEmail(email) {
     .toLowerCase();
 }
 
+function normalizeRegistrationNo(registrationNo) {
+  return String(registrationNo || "")
+    .trim()
+    .toUpperCase();
+}
+
 async function findRegistryStudent(registrationNo, email) {
   const result = await db.query(
     `SELECT registration_no, name, email
@@ -63,7 +69,7 @@ async function findRegistryStudent(registrationNo, email) {
      WHERE registration_no = $1
        AND LOWER(email) = LOWER($2)
      LIMIT 1`,
-    [String(registrationNo || "").trim(), normalizeStudentEmail(email)],
+    [normalizeRegistrationNo(registrationNo), normalizeStudentEmail(email)],
   );
 
   return result.rows[0] || null;
@@ -91,6 +97,7 @@ router.post("/register", async (req, res, next) => {
     }
 
     const normalizedEmail = normalizeStudentEmail(email);
+    let normalizedRegistrationNo = null;
 
     if (!role || !["student", "expert"].includes(role)) {
       return res.status(400).json({
@@ -114,7 +121,9 @@ router.post("/register", async (req, res, next) => {
         });
       }
 
-      if (!getExpectedUomIndexLetter(studentId)) {
+      normalizedRegistrationNo = normalizeRegistrationNo(studentId);
+
+      if (!getExpectedUomIndexLetter(normalizedRegistrationNo)) {
         return res.status(400).json({
           status: "error",
           message:
@@ -123,7 +132,7 @@ router.post("/register", async (req, res, next) => {
       }
 
       const registryStudent = await findRegistryStudent(
-        studentId,
+        normalizedRegistrationNo,
         normalizedEmail,
       );
       if (!registryStudent) {
@@ -161,7 +170,7 @@ router.post("/register", async (req, res, next) => {
     if (role === "student") {
       const existingRegistration = await db.query(
         "SELECT id FROM unistudents WHERE registration_no = $1",
-        [studentId],
+        [normalizedRegistrationNo],
       );
       if (existingRegistration.rows.length > 0) {
         return res.status(409).json({
@@ -186,7 +195,7 @@ router.post("/register", async (req, res, next) => {
 
     const values =
       role === "student"
-        ? [name, normalizedEmail, hash, role, studentId]
+        ? [name, normalizedEmail, hash, role, normalizedRegistrationNo]
         : [name, normalizedEmail, hash, role];
 
     const result = await db.query(insertSql, values);

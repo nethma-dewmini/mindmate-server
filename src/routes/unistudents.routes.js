@@ -1,11 +1,12 @@
 const express = require('express');
 const db = require('../db');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
 // GET /api/unistudents?limit=&offset=&q=
 // Returns users with role = 'student'
-router.get('/', async (req, res, next) => {
+router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 500);
     const offset = Number(req.query.offset) || 0;
@@ -29,7 +30,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/unistudents/:id
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await db.query(
