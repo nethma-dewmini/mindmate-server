@@ -32,7 +32,7 @@ router.get("/", requireAuth, requireAdmin, async (req, res, next) => {
 
     if (q) {
       params.push(`%${q.toLowerCase()}%`);
-      sql += ` WHERE (LOWER(registration_no) LIKE $${params.length} OR LOWER(name) LIKE $${params.length} OR LOWER(email) LIKE $${params.length})`;
+      sql += ` WHERE (LOWER(registration_no) LIKE $${params.length} OR LOWER(email) LIKE $${params.length})`;
     }
 
     params.push(limit);
