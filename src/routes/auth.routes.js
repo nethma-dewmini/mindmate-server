@@ -64,7 +64,7 @@ function normalizeRegistrationNo(registrationNo) {
 
 async function findRegistryStudent(registrationNo, email) {
   const result = await db.query(
-    `SELECT registration_no, name, email
+    `SELECT registration_no, email
      FROM student_registry
      WHERE registration_no = $1
        AND LOWER(email) = LOWER($2)
@@ -126,8 +126,7 @@ router.post("/register", async (req, res, next) => {
       if (!getExpectedUomIndexLetter(normalizedRegistrationNo)) {
         return res.status(400).json({
           status: "error",
-          message:
-            "Invalid Registration No. Use a 6-digit UOM index number followed by the correct letter, for example 225015L",
+          message: "Invalid Registration No.",
         });
       }
 
@@ -139,18 +138,7 @@ router.post("/register", async (req, res, next) => {
         return res.status(403).json({
           status: "error",
           message:
-            "Student record not found in university registry. Please use your official UOM registration number and university email.",
-        });
-      }
-
-      if (
-        registryStudent.name &&
-        String(registryStudent.name).trim().toLowerCase() !==
-          String(name).trim().toLowerCase()
-      ) {
-        return res.status(403).json({
-          status: "error",
-          message: "Name does not match the university registry record",
+            "No matching student record was found for the entered registration number and email.",
         });
       }
     }

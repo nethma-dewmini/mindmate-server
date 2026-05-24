@@ -25,7 +25,7 @@ router.get("/", requireAuth, requireAdmin, async (req, res, next) => {
     const q = String(req.query.q || "").trim();
 
     let sql = `
-      SELECT id, registration_no, name, email, created_at, updated_at
+      SELECT id, registration_no, email, created_at, updated_at
       FROM student_registry
     `;
     const params = [];
@@ -57,10 +57,10 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { registration_no, name, email } = req.body || {};
 
-    if (!registration_no || !name || !email) {
+    if (!registration_no || !email) {
       return res.status(400).json({
         status: "error",
-        message: "registration_no, name, and email are required",
+        message: "registration_no and email are required",
       });
     }
 
@@ -84,10 +84,10 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
     }
 
     const result = await db.query(
-      `INSERT INTO student_registry (registration_no, name, email, created_at, updated_at)
-       VALUES ($1, $2, $3, NOW(), NOW())
-       RETURNING id, registration_no, name, email, created_at, updated_at`,
-      [normalizedRegistrationNo, String(name).trim(), normalizedEmail],
+      `INSERT INTO student_registry (registration_no, email, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())
+       RETURNING id, registration_no, email, created_at, updated_at`,
+      [normalizedRegistrationNo, normalizedEmail],
     );
 
     return res.status(201).json({
