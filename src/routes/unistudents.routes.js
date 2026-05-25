@@ -1,15 +1,16 @@
-const express = require('express');
-const db = require('../db');
+const express = require("express");
+const db = require("../db");
+const { requireAuth, requireAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
 // GET /api/unistudents?limit=&offset=&q=
 // Returns users with role = 'student'
-router.get('/', async (req, res, next) => {
+router.get("/", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 500);
     const offset = Number(req.query.offset) || 0;
-    const q = (req.query.q || '').trim();
+    const q = (req.query.q || "").trim();
 
     let sql = `SELECT id, name, email, role, registration_no, is_verified, created_at FROM unistudents WHERE role = 'student'`;
     const params = [];
@@ -29,14 +30,15 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/unistudents/:id
-router.get('/:id', async (req, res, next) => {
+router.get("/:id", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await db.query(
-      'SELECT id, name, email, role, registration_no, bio, phone, is_verified, created_at FROM unistudents WHERE id = $1 LIMIT 1',
+      "SELECT id, name, email, role, registration_no, bio, phone, is_verified, created_at FROM unistudents WHERE id = $1 LIMIT 1",
       [id],
     );
-    if (result.rows.length === 0) return res.status(404).json({ message: 'Student not found' });
+    if (result.rows.length === 0)
+      return res.status(404).json({ message: "Student not found" });
     res.json(result.rows[0]);
   } catch (err) {
     next(err);
