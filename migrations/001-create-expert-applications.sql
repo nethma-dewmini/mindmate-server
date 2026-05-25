@@ -3,12 +3,9 @@
 
 CREATE TABLE IF NOT EXISTS expert_applications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  firebase_uid text,
   name text NOT NULL,
   email text NOT NULL,
-  role_requested text NOT NULL,
   specialization text,
-  experience text,
   documents jsonb DEFAULT '[]',
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
   admin_id uuid,
