@@ -135,6 +135,44 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
   }
 });
 
+// GET /api/expert-applications/status?email=...
+// Public endpoint to let an applicant check their latest application status by email
+router.get("/status", async (req, res, next) => {
+  try {
+    const { email } = req.query || {};
+
+    if (!email) {
+      return res.status(400).json({
+        status: "error",
+        message: "email is required",
+      });
+    }
+
+    const result = await db.query(
+      `SELECT id, name, title, email, specialization, status, admin_notes, created_at, reviewed_at
+       FROM expert_applications
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY (reviewed_at IS NULL) ASC, reviewed_at DESC, created_at DESC
+       LIMIT 1`,
+      [String(email).trim()],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "No expert application found for this email",
+      });
+    }
+
+    return res.status(200).json({
+      status: "ok",
+      application: result.rows[0],
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/expert-applications/:id
 // Get application details (admin only)
 router.get("/:id", requireAuth, requireAdmin, async (req, res, next) => {
