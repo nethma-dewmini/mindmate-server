@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const db = require("../db");
+const { requireAuth, requireAdmin } = require("../middleware/auth");
 
 // Configure multer for file uploads
 const uploadsDir = path.join(__dirname, "../../uploads/expert-applications");
@@ -57,13 +58,12 @@ const upload = multer({
 // Submit an expert application with documents
 router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
   try {
-    const { name, email, role_requested, specialization, experience } =
-      req.body || {};
+    const { name, title, email, specialization } = req.body || {};
 
-    if (!name || !email || !role_requested) {
+    if (!name || !email) {
       return res.status(400).json({
         status: "error",
-        message: "name, email, and role_requested are required",
+        message: "name and email are required",
       });
     }
 
@@ -99,16 +99,15 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
 
     // Insert application into DB
     const insertSql = `INSERT INTO expert_applications 
-      (name, email, role_requested, specialization, experience, documents, status, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW())
-      RETURNING id, name, email, role_requested, status, created_at`;
+      (name, title, email, specialization, documents, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, 'pending', NOW())
+      RETURNING id, name, title, email, status, created_at`;
 
     const result = await db.query(insertSql, [
       name,
+      title || null,
       email.toLowerCase(),
-      role_requested,
       specialization || null,
-      experience || null,
       JSON.stringify(documents),
     ]);
 
@@ -120,8 +119,8 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
       application: {
         id: application.id,
         name: application.name,
+        title: application.title,
         email: application.email,
-        role_requested: application.role_requested,
         status: application.status,
         created_at: application.created_at,
         filesCount: documents.length,
@@ -136,13 +135,51 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
   }
 });
 
+// GET /api/expert-applications/status?email=...
+// Public endpoint to let an applicant check their latest application status by email
+router.get("/status", async (req, res, next) => {
+  try {
+    const { email } = req.query || {};
+
+    if (!email) {
+      return res.status(400).json({
+        status: "error",
+        message: "email is required",
+      });
+    }
+
+    const result = await db.query(
+      `SELECT id, name, title, email, specialization, status, admin_notes, created_at, reviewed_at
+       FROM expert_applications
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY (reviewed_at IS NULL) ASC, reviewed_at DESC, created_at DESC
+       LIMIT 1`,
+      [String(email).trim()],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "No expert application found for this email",
+      });
+    }
+
+    return res.status(200).json({
+      status: "ok",
+      application: result.rows[0],
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/expert-applications/:id
-// Get application details (admin or applicant)
-router.get("/:id", async (req, res, next) => {
+// Get application details (admin only)
+router.get("/:id", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await db.query(
-      "SELECT id, name, email, role_requested, specialization, experience, documents, status, admin_notes, created_at, reviewed_at FROM expert_applications WHERE id = $1",
+      "SELECT id, name, email, specialization, documents, status, admin_notes, created_at, reviewed_at FROM expert_applications WHERE id = $1",
       [id],
     );
 
@@ -153,7 +190,16 @@ router.get("/:id", async (req, res, next) => {
     }
 
     const application = result.rows[0];
-    application.documents = JSON.parse(application.documents || "[]");
+    // `documents` column may be returned as JSON (object) or as a string depending on driver
+    let docs = application.documents;
+    if (typeof docs === "string") {
+      try {
+        docs = JSON.parse(docs || "[]");
+      } catch (e) {
+        docs = [];
+      }
+    }
+    application.documents = docs || [];
 
     return res.status(200).json({ status: "ok", application });
   } catch (err) {
@@ -163,11 +209,11 @@ router.get("/:id", async (req, res, next) => {
 
 // GET /api/expert-applications (admin)
 // List all applications with optional status filter
-router.get("/", async (req, res, next) => {
+router.get("/", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { status } = req.query;
     let sql =
-      "SELECT id, name, email, role_requested, status, created_at, reviewed_at FROM expert_applications";
+      "SELECT id, name, email, status, created_at, reviewed_at FROM expert_applications";
     const params = [];
 
     if (status) {
@@ -184,6 +230,45 @@ router.get("/", async (req, res, next) => {
       count: result.rows.length,
       applications: result.rows,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/expert-applications/:id (admin)
+// Update application status (approve/reject) and add admin notes
+router.patch("/:id", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, admin_notes } = req.body || {};
+
+    const normalized = String(status || "")
+      .toLowerCase()
+      .trim();
+    const allowed = ["pending", "approved", "rejected"];
+    if (!allowed.includes(normalized)) {
+      return res
+        .status(400)
+        .json({ status: "error", message: "Invalid status" });
+    }
+
+    const adminId = req.user && req.user.id ? req.user.id : null;
+
+    const updateSql = `UPDATE expert_applications SET status=$1, admin_notes=$2, admin_id=$3, reviewed_at=NOW() WHERE id=$4 RETURNING id, name, title, email, specialization, documents, status, admin_notes, created_at, reviewed_at`;
+    const result = await db.query(updateSql, [
+      normalized,
+      admin_notes || null,
+      adminId,
+      id,
+    ]);
+
+    if (result.rows.length === 0) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Application not found" });
+    }
+
+    return res.status(200).json({ status: "ok", application: result.rows[0] });
   } catch (err) {
     next(err);
   }
