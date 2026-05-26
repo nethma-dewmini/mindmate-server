@@ -45,6 +45,10 @@ const upload = multer({
       "video/mp4",
       "video/webm",
       "video/quicktime",
+      "audio/mpeg",
+      "audio/wav",
+      "audio/ogg",
+      "audio/webm",
     ];
 
     if (allowedMimes.includes(file.mimetype)) {
@@ -154,6 +158,12 @@ router.get("/", async (req, res, next) => {
       filters.push(`r.type = $${values.length}`);
     }
 
+    // If the request is unauthenticated, only return publicly visible resources
+    if (!req.headers || !req.headers.authorization) {
+      values.push("public");
+      filters.push(`r.visibility = $${values.length}`);
+    }
+
     const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
 
     const result = await query(
@@ -229,19 +239,30 @@ router.post(
   upload.single("document"),
   async (req, res, next) => {
     try {
-      const { title, category, summary, type, visibility, videoUrl } =
+      const { title, category, summary, type, visibility, videoUrl, audioUrl } =
         req.body || {};
 
-      if (!title || (!req.file && !videoUrl)) {
+      if (!title) {
         return res.status(400).json({
           status: "error",
-          message: "Title and a document file or video URL are required",
+          message: "Title is required",
+        });
+      }
+
+      const hasUrlForType =
+        (type === "VIDEO" && videoUrl) || (type === "AUDIO" && audioUrl);
+
+      if (!req.file && !hasUrlForType) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "A document file or a valid URL (for video/audio) is required",
         });
       }
 
       const fileUrl = req.file
         ? `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`
-        : videoUrl;
+        : videoUrl || audioUrl;
 
       const result = await query(
         `INSERT INTO resources (
@@ -306,7 +327,9 @@ router.patch(
 
       const nextContentUrl = req.file
         ? `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`
-        : req.body.videoUrl || existingResource.content_url;
+        : req.body.videoUrl ||
+          req.body.audioUrl ||
+          existingResource.content_url;
 
       const updateResult = await query(
         `UPDATE resources
