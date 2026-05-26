@@ -42,6 +42,9 @@ const upload = multer({
       "image/webp",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
     ];
 
     if (allowedMimes.includes(file.mimetype)) {
@@ -226,16 +229,19 @@ router.post(
   upload.single("document"),
   async (req, res, next) => {
     try {
-      const { title, category, summary, type, visibility } = req.body || {};
+      const { title, category, summary, type, visibility, videoUrl } =
+        req.body || {};
 
-      if (!title || !req.file) {
+      if (!title || (!req.file && !videoUrl)) {
         return res.status(400).json({
           status: "error",
-          message: "Title and document file are required",
+          message: "Title and a document file or video URL are required",
         });
       }
 
-      const fileUrl = `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`;
+      const fileUrl = req.file
+        ? `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`
+        : videoUrl;
 
       const result = await query(
         `INSERT INTO resources (
@@ -300,7 +306,7 @@ router.patch(
 
       const nextContentUrl = req.file
         ? `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`
-        : existingResource.content_url;
+        : req.body.videoUrl || existingResource.content_url;
 
       const updateResult = await query(
         `UPDATE resources
