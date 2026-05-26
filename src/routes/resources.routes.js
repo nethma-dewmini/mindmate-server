@@ -63,6 +63,79 @@ function ensureExpert(req, res, next) {
   return next();
 }
 
+function mapResourceRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    authorId: row.author_id,
+    authorName: row.author_name,
+    authorEmail: row.author_email,
+    authorRole: row.author_role,
+    type: row.type,
+    category: row.category,
+    contentUrl: row.content_url,
+    summary: row.summary,
+    visibility: row.visibility,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+router.get("/", async (req, res, next) => {
+  try {
+    const { authorRole, category, type } = req.query || {};
+    const filters = [];
+    const values = [];
+
+    if (authorRole) {
+      values.push(authorRole);
+      filters.push(`u.role = $${values.length}`);
+    }
+
+    if (category) {
+      values.push(category);
+      filters.push(`r.category ILIKE $${values.length}`);
+    }
+
+    if (type) {
+      values.push(type.toUpperCase());
+      filters.push(`r.type = $${values.length}`);
+    }
+
+    const whereClause = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+
+    const result = await query(
+      `SELECT
+        r.id,
+        r.title,
+        r.author_id,
+        r.type,
+        r.category,
+        r.content_url,
+        r.summary,
+        r.visibility,
+        r.created_at,
+        r.updated_at,
+        u.name AS author_name,
+        u.email AS author_email,
+        u.role AS author_role
+      FROM resources r
+      LEFT JOIN unistudents u ON u.id = r.author_id
+      ${whereClause}
+      ORDER BY r.created_at DESC`,
+      values,
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      count: result.rowCount,
+      resources: result.rows.map(mapResourceRow),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post(
   "/",
   requireAuth,
@@ -96,7 +169,7 @@ router.post(
         RETURNING id, title, type, category, content_url, summary, visibility, created_at, updated_at`,
         [
           title.trim(),
-          null,
+          req.user.id,
           type || "GUIDE",
           category || null,
           fileUrl,
