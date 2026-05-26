@@ -7,6 +7,7 @@ const peerGroupsRouter = require("./peer-groups.routes");
 const moodsRouter = require("./moods.routes");
 const unistudentsRouter = require("./unistudents.routes");
 const studentRegistryRouter = require("./student-registry.routes");
+const resourcesRouter = require("./resources.routes");
 
 const router = express.Router();
 
@@ -18,5 +19,6 @@ router.use("/peer-groups", peerGroupsRouter);
 router.use("/moods", moodsRouter);
 router.use("/unistudents", unistudentsRouter);
 router.use("/student-registry", studentRegistryRouter);
+router.use("/resources", resourcesRouter);
 
 module.exports = router;
