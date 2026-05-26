@@ -112,12 +112,27 @@ async function findRegistryStudent(registrationNo, email) {
   return result.rows[0] || null;
 }
 
+async function findLatestApprovedExpertApplication(email) {
+  const result = await db.query(
+    `SELECT id, name, title, email, specialization
+     FROM expert_applications
+     WHERE LOWER(email) = LOWER($1)
+       AND status = 'approved'
+     ORDER BY reviewed_at DESC NULLS LAST, created_at DESC
+     LIMIT 1`,
+    [normalizeStudentEmail(email)],
+  );
+
+  return result.rows[0] || null;
+}
+
 // POST /api/auth/register
 // Handles both student and expert registration
 router.post("/register", async (req, res, next) => {
   try {
     const {
       name,
+      title,
       email,
       password,
       role,
@@ -180,6 +195,20 @@ router.post("/register", async (req, res, next) => {
       }
     }
 
+    let approvedExpertApplication = null;
+    if (role === "expert") {
+      approvedExpertApplication =
+        await findLatestApprovedExpertApplication(normalizedEmail);
+
+      if (!approvedExpertApplication) {
+        return res.status(403).json({
+          status: "error",
+          message:
+            "Your expert application is not approved yet. Please wait for admin approval before registering.",
+        });
+      }
+    }
+
     // check existing user
     const existing = await db.query(
       "SELECT id, email FROM unistudents WHERE email = $1",
@@ -226,17 +255,15 @@ router.post("/register", async (req, res, next) => {
     const result = await db.query(insertSql, values);
     const resultUser = result.rows[0];
 
-    // If expert, create expert profile
-    if (
-      role === "expert" &&
-      (specialization || qualifications || licenseNumber)
-    ) {
+    // If expert, create expert profile from approved application data
+    if (role === "expert") {
       await db.query(
-        `INSERT INTO experts (user_id, specialization, qualifications, license_number, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+        `INSERT INTO experts (user_id, title, specialization, qualifications, license_number, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
         [
           resultUser.id,
-          specialization || null,
+          title || approvedExpertApplication.title || null,
+          specialization || approvedExpertApplication.specialization || null,
           qualifications || null,
           licenseNumber || null,
         ],
@@ -248,6 +275,21 @@ router.post("/register", async (req, res, next) => {
         status: "ok",
         message: "Registration successful",
         user: resultUser,
+      });
+    }
+
+    if (role === "expert") {
+      const token = jwt.sign(
+        { id: resultUser.id, role: resultUser.role || role },
+        process.env.JWT_SECRET || "dev_jwt_secret",
+        { expiresIn: "7d" },
+      );
+
+      return res.status(201).json({
+        status: "ok",
+        message: "Expert registration successful",
+        user: resultUser,
+        token,
       });
     }
 
@@ -343,13 +385,11 @@ router.post("/forgot-password", async (req, res, next) => {
     );
     if (userRes.rows.length === 0) {
       // Do not reveal: respond success regardless
-      return res
-        .status(200)
-        .json({
-          status: "ok",
-          message:
-            "If an account exists for this email, a reset link has been sent.",
-        });
+      return res.status(200).json({
+        status: "ok",
+        message:
+          "If an account exists for this email, a reset link has been sent.",
+      });
     }
 
     const user = userRes.rows[0];
@@ -376,24 +416,20 @@ router.post("/forgot-password", async (req, res, next) => {
     if (!sent) {
       // If mail not sent, only expose token in dev if explicitly allowed
       if (process.env.ALLOW_EMAIL_VERIFICATION_BYPASS === "true") {
-        return res
-          .status(200)
-          .json({
-            status: "ok",
-            message: "Reset token generated (dev)",
-            token,
-            resetLink,
-          });
+        return res.status(200).json({
+          status: "ok",
+          message: "Reset token generated (dev)",
+          token,
+          resetLink,
+        });
       }
     }
 
-    return res
-      .status(200)
-      .json({
-        status: "ok",
-        message:
-          "If an account exists for this email, a reset link has been sent.",
-      });
+    return res.status(200).json({
+      status: "ok",
+      message:
+        "If an account exists for this email, a reset link has been sent.",
+    });
   } catch (err) {
     next(err);
   }
@@ -404,12 +440,10 @@ router.post("/reset-password", async (req, res, next) => {
   try {
     const { token, password } = req.body || {};
     if (!token || !password) {
-      return res
-        .status(400)
-        .json({
-          status: "error",
-          message: "Token and new password are required",
-        });
+      return res.status(400).json({
+        status: "error",
+        message: "Token and new password are required",
+      });
     }
 
     const pr = await db.query(
@@ -424,12 +458,10 @@ router.post("/reset-password", async (req, res, next) => {
 
     const reset = pr.rows[0];
     if (reset.used) {
-      return res
-        .status(400)
-        .json({
-          status: "error",
-          message: "This reset token has already been used",
-        });
+      return res.status(400).json({
+        status: "error",
+        message: "This reset token has already been used",
+      });
     }
 
     if (new Date(reset.expires_at) < new Date()) {
