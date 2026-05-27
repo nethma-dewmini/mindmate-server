@@ -1,5 +1,6 @@
 const express = require("express");
 const db = require("../db");
+const { requireAuth, requireAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -17,8 +18,8 @@ router.get("/", async (req, res, next) => {
   }
 });
 
-// Create a group
-router.post("/", async (req, res, next) => {
+// Create a group (admin only)
+router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const { name, description, is_public = true, created_by = null } = req.body;
     if (!name) return res.status(400).json({ error: "name is required" });
@@ -60,7 +61,7 @@ router.get("/:id", async (req, res, next) => {
 });
 
 // Join group
-router.post("/:id/join", async (req, res, next) => {
+router.post("/:id/join", requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { user_id } = req.body;
@@ -81,7 +82,7 @@ router.post("/:id/join", async (req, res, next) => {
 });
 
 // Leave group
-router.post("/:id/leave", async (req, res, next) => {
+router.post("/:id/leave", requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { user_id } = req.body;
@@ -113,7 +114,7 @@ router.get("/:id/messages", async (req, res, next) => {
 });
 
 // Post a message to group
-router.post("/:id/messages", async (req, res, next) => {
+router.post("/:id/messages", requireAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { user_id, content, metadata = {} } = req.body;
@@ -150,23 +151,56 @@ router.post("/:id/messages", async (req, res, next) => {
   }
 });
 
-// Delete a message (simple check: allow if user_id matches or caller passes admin=true)
-router.delete("/:id/messages/:messageId", async (req, res, next) => {
-  try {
-    const { id, messageId } = req.params;
-    const { user_id, admin } = req.body; // admin flag for simplicity
-    const m = await db.query(
-      "SELECT user_id FROM group_messages WHERE id = $1 AND group_id = $2",
-      [messageId, id],
-    );
-    if (m.rows.length === 0)
-      return res.status(404).json({ error: "message not found" });
-    if (!admin && m.rows[0].user_id !== user_id) {
-      return res
-        .status(403)
-        .json({ error: "not authorized to delete this message" });
+// Delete a message (simple check: allow if user_id matches or caller is admin)
+router.delete(
+  "/:id/messages/:messageId",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      const { id, messageId } = req.params;
+      const { user_id } = req.body;
+      const isAdminCaller = req.user && req.user.role === "admin";
+      const m = await db.query(
+        "SELECT user_id FROM group_messages WHERE id = $1 AND group_id = $2",
+        [messageId, id],
+      );
+      if (m.rows.length === 0)
+        return res.status(404).json({ error: "message not found" });
+      if (!isAdminCaller && m.rows[0].user_id !== user_id) {
+        return res
+          .status(403)
+          .json({ error: "not authorized to delete this message" });
+      }
+      await db.query("DELETE FROM group_messages WHERE id = $1", [messageId]);
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
     }
-    await db.query("DELETE FROM group_messages WHERE id = $1", [messageId]);
+  },
+);
+
+// Update group (admin only)
+router.patch("/:id", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, description, is_public } = req.body;
+    const q = await db.query(
+      "UPDATE peer_groups SET name = COALESCE($1,name), description = COALESCE($2,description), is_public = COALESCE($3,is_public) WHERE id = $4 RETURNING *",
+      [name || null, description || null, is_public, id],
+    );
+    if (q.rows.length === 0)
+      return res.status(404).json({ error: "group not found" });
+    res.json(q.rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete group (admin only)
+router.delete("/:id", requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await db.query("DELETE FROM peer_groups WHERE id = $1", [id]);
     res.json({ success: true });
   } catch (err) {
     next(err);
