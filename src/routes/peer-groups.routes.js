@@ -128,7 +128,20 @@ router.get("/:id/messages", async (req, res, next) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const offset = Number(req.query.offset) || 0;
     const result = await db.query(
-      "SELECT id, group_id, user_id, content, metadata, created_at FROM group_messages WHERE group_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+      `SELECT
+         gm.id,
+         gm.group_id,
+         gm.user_id,
+         gm.content,
+         gm.metadata,
+         gm.created_at,
+         COALESCE(gm.metadata->>'authorRole', u.role, 'student') AS author_role,
+         COALESCE(u.name, 'User') AS author_name
+       FROM group_messages gm
+       LEFT JOIN unistudents u ON u.id::text = gm.user_id
+       WHERE gm.group_id = $1
+       ORDER BY gm.created_at DESC
+       LIMIT $2 OFFSET $3`,
       [id, limit, offset],
     );
     res.json(result.rows);
@@ -185,15 +198,85 @@ router.post("/:id/messages", requireAuth, async (req, res, next) => {
         .json({ error: "must be a member to post in this group" });
     }
 
+    const normalizedMetadata = {
+      ...metadata,
+      authorRole: req.user.role,
+    };
+
     const insert = await db.query(
       "INSERT INTO group_messages (group_id, user_id, content, metadata) VALUES ($1,$2,$3,$4) RETURNING id, group_id, user_id, content, metadata, created_at",
-      [id, user_id, content, metadata],
+      [id, user_id, content, normalizedMetadata],
     );
-    res.status(201).json(insert.rows[0]);
+    res.status(201).json({
+      ...insert.rows[0],
+      author_role: req.user.role,
+    });
   } catch (err) {
     next(err);
   }
 });
+
+// React to a message (toggle like/support)
+router.post(
+  "/:id/messages/:messageId/reactions",
+  requireAuth,
+  async (req, res, next) => {
+    try {
+      await ensureGroupMessagesTable();
+      const { id, messageId } = req.params;
+      const { user_id, type } = req.body;
+
+      if (!user_id || !type) {
+        return res.status(400).json({ error: "user_id and type are required" });
+      }
+
+      if (!["like", "support"].includes(type)) {
+        return res
+          .status(400)
+          .json({ error: "type must be either 'like' or 'support'" });
+      }
+
+      const messageRes = await db.query(
+        "SELECT metadata FROM group_messages WHERE id = $1 AND group_id = $2",
+        [messageId, id],
+      );
+
+      if (messageRes.rows.length === 0) {
+        return res.status(404).json({ error: "message not found" });
+      }
+
+      const metadata = messageRes.rows[0].metadata || {};
+      const reactions = metadata.reactions || {};
+      const currentUsers = Array.isArray(reactions[type]) ? reactions[type] : [];
+
+      const hasReacted = currentUsers.includes(user_id);
+      const nextUsers = hasReacted
+        ? currentUsers.filter((idValue) => idValue !== user_id)
+        : [...currentUsers, user_id];
+
+      const updatedMetadata = {
+        ...metadata,
+        reactions: {
+          ...reactions,
+          [type]: nextUsers,
+        },
+      };
+
+      const updateRes = await db.query(
+        "UPDATE group_messages SET metadata = $1 WHERE id = $2 RETURNING id, group_id, user_id, content, metadata, created_at",
+        [updatedMetadata, messageId],
+      );
+
+      res.json({
+        ...updateRes.rows[0],
+        reaction_type: type,
+        reacted: !hasReacted,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // Delete a message (simple check: allow if user_id matches or caller is admin)
 router.delete(
