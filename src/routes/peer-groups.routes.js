@@ -288,15 +288,15 @@ router.delete(
     try {
       await ensureGroupMessagesTable();
       const { id, messageId } = req.params;
-      const { user_id } = req.body;
       const isAdminCaller = req.user && req.user.role === "admin";
+      const userId = req.body && req.body.user_id ? req.body.user_id : null;
       const m = await db.query(
         "SELECT user_id FROM group_messages WHERE id = $1 AND group_id = $2",
         [messageId, id],
       );
       if (m.rows.length === 0)
         return res.status(404).json({ error: "message not found" });
-      if (!isAdminCaller && m.rows[0].user_id !== user_id) {
+      if (!isAdminCaller && m.rows[0].user_id !== userId) {
         return res
           .status(403)
           .json({ error: "not authorized to delete this message" });
