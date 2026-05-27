@@ -4,6 +4,23 @@ const { requireAuth, requireAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
+async function ensureGroupMessagesTable() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS group_messages (
+      id uuid PRIMARY KEY DEFAULT COALESCE(uuid_generate_v4()::uuid, gen_random_uuid()),
+      group_id uuid NOT NULL REFERENCES peer_groups(id) ON DELETE CASCADE,
+      user_id text NOT NULL,
+      content text NOT NULL,
+      metadata jsonb DEFAULT '{}',
+      created_at timestamptz DEFAULT NOW()
+    )
+  `);
+
+  await db.query(
+    "CREATE INDEX IF NOT EXISTS idx_group_messages_group_id_created_at ON group_messages(group_id, created_at DESC)",
+  );
+}
+
 // List all groups (optionally ?publicOnly=true)
 router.get("/", async (req, res, next) => {
   try {
@@ -106,6 +123,7 @@ router.post("/:id/leave", requireAuth, async (req, res, next) => {
 // List messages for a group (pagination: ?limit=&offset=)
 router.get("/:id/messages", async (req, res, next) => {
   try {
+    await ensureGroupMessagesTable();
     const { id } = req.params;
     const limit = Math.min(Number(req.query.limit) || 50, 200);
     const offset = Number(req.query.offset) || 0;
@@ -122,6 +140,7 @@ router.get("/:id/messages", async (req, res, next) => {
 // Post a message to group
 router.post("/:id/messages", requireAuth, async (req, res, next) => {
   try {
+    await ensureGroupMessagesTable();
     if (req.user.role !== "student") {
       return res.status(403).json({ error: "student access required" });
     }
@@ -166,6 +185,7 @@ router.delete(
   requireAuth,
   async (req, res, next) => {
     try {
+      await ensureGroupMessagesTable();
       const { id, messageId } = req.params;
       const { user_id } = req.body;
       const isAdminCaller = req.user && req.user.role === "admin";
