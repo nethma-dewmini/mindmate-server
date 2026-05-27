@@ -50,7 +50,7 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
     if (created_by) {
       await db.query(
         "INSERT INTO group_members (group_id, user_id, role) VALUES ($1,$2,$3) ON CONFLICT (group_id, user_id) DO NOTHING",
-        [group.id, created_by, "admin"],
+        [group.id, created_by, "owner"],
       );
     }
 
@@ -141,8 +141,10 @@ router.get("/:id/messages", async (req, res, next) => {
 router.post("/:id/messages", requireAuth, async (req, res, next) => {
   try {
     await ensureGroupMessagesTable();
-    if (req.user.role !== "student") {
-      return res.status(403).json({ error: "student access required" });
+    if (!["student", "admin"].includes(req.user.role)) {
+      return res
+        .status(403)
+        .json({ error: "student or admin access required" });
     }
     const { id } = req.params;
     const { user_id, content, metadata = {} } = req.body;
@@ -150,6 +152,20 @@ router.post("/:id/messages", requireAuth, async (req, res, next) => {
       return res
         .status(400)
         .json({ error: "user_id and content are required" });
+
+    if (req.user.role === "admin") {
+      const memberRes = await db.query(
+        "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2 AND role = 'owner'",
+        [id, user_id],
+      );
+      if (memberRes.rows.length === 0) {
+        await db.query(
+          "INSERT INTO group_members (group_id, user_id, role) VALUES ($1,$2,$3) ON CONFLICT (group_id, user_id) DO UPDATE SET role = 'owner'",
+          [id, user_id, "owner"],
+        );
+      }
+    }
+
     // ensure membership (optional: allow anonymous posting if group is public)
     const groupRes = await db.query(
       "SELECT is_public FROM peer_groups WHERE id = $1",
