@@ -63,6 +63,9 @@ router.get("/:id", async (req, res, next) => {
 // Join group
 router.post("/:id/join", requireAuth, async (req, res, next) => {
   try {
+    if (req.user.role !== "student") {
+      return res.status(403).json({ error: "student access required" });
+    }
     const { id } = req.params;
     const { user_id } = req.body;
     if (!user_id) return res.status(400).json({ error: "user_id is required" });
@@ -84,6 +87,9 @@ router.post("/:id/join", requireAuth, async (req, res, next) => {
 // Leave group
 router.post("/:id/leave", requireAuth, async (req, res, next) => {
   try {
+    if (req.user.role !== "student") {
+      return res.status(403).json({ error: "student access required" });
+    }
     const { id } = req.params;
     const { user_id } = req.body;
     if (!user_id) return res.status(400).json({ error: "user_id is required" });
@@ -116,6 +122,9 @@ router.get("/:id/messages", async (req, res, next) => {
 // Post a message to group
 router.post("/:id/messages", requireAuth, async (req, res, next) => {
   try {
+    if (req.user.role !== "student") {
+      return res.status(403).json({ error: "student access required" });
+    }
     const { id } = req.params;
     const { user_id, content, metadata = {} } = req.body;
     if (!user_id || !content)
