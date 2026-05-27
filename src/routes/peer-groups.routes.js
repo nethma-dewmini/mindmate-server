@@ -247,7 +247,9 @@ router.post(
 
       const metadata = messageRes.rows[0].metadata || {};
       const reactions = metadata.reactions || {};
-      const currentUsers = Array.isArray(reactions[type]) ? reactions[type] : [];
+      const currentUsers = Array.isArray(reactions[type])
+        ? reactions[type]
+        : [];
 
       const hasReacted = currentUsers.includes(user_id);
       const nextUsers = hasReacted
