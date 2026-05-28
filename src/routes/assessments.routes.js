@@ -116,6 +116,7 @@ function mapAssessmentRow(row) {
         ? JSON.parse(row.questions || "[]")
         : row.questions || [],
     authorId: row.author_id,
+    authorName: row.author_name || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -123,9 +124,10 @@ function mapAssessmentRow(row) {
 
 async function loadAssessmentById(id) {
   const result = await query(
-    `SELECT id, key, title, description, icon, duration, visibility, questions, author_id, created_at, updated_at
-     FROM assessments
-     WHERE id = $1
+    `SELECT a.id, a.key, a.title, a.description, a.icon, a.duration, a.visibility, a.questions, a.author_id, a.created_at, a.updated_at, u.name AS author_name
+     FROM assessments a
+     LEFT JOIN unistudents u ON u.id = a.author_id
+     WHERE a.id = $1
      LIMIT 1`,
     [id],
   );
@@ -150,10 +152,11 @@ router.get("/public", async (req, res, next) => {
     await ensureAssessmentsSchema();
 
     const result = await query(
-      `SELECT id, key, title, description, icon, duration, visibility, questions, author_id, created_at, updated_at
-       FROM assessments
-       WHERE visibility = 'public'
-       ORDER BY updated_at DESC, created_at DESC`,
+      `SELECT a.id, a.key, a.title, a.description, a.icon, a.duration, a.visibility, a.questions, a.author_id, a.created_at, a.updated_at, u.name AS author_name
+       FROM assessments a
+       LEFT JOIN unistudents u ON u.id = a.author_id
+       WHERE a.visibility = 'public'
+       ORDER BY a.updated_at DESC, a.created_at DESC`,
     );
 
     return res.status(200).json({
@@ -171,10 +174,11 @@ router.get("/me", requireAuth, ensureExpert, async (req, res, next) => {
     await ensureAssessmentsSchema();
 
     const result = await query(
-      `SELECT id, key, title, description, icon, duration, visibility, questions, author_id, created_at, updated_at
-       FROM assessments
-       WHERE author_id = $1
-       ORDER BY updated_at DESC, created_at DESC`,
+      `SELECT a.id, a.key, a.title, a.description, a.icon, a.duration, a.visibility, a.questions, a.author_id, a.created_at, a.updated_at, u.name AS author_name
+       FROM assessments a
+       LEFT JOIN unistudents u ON u.id = a.author_id
+       WHERE a.author_id = $1
+       ORDER BY a.updated_at DESC, a.created_at DESC`,
       [req.user.id],
     );
 
@@ -290,7 +294,10 @@ router.post("/", requireAuth, ensureExpert, async (req, res, next) => {
     return res.status(201).json({
       status: "ok",
       message: "Assessment created successfully",
-      assessment: mapAssessmentRow(result.rows[0]),
+      assessment: {
+        ...mapAssessmentRow(result.rows[0]),
+        authorName: req.user.name,
+      },
     });
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -369,7 +376,10 @@ router.patch("/:id", requireAuth, ensureExpert, async (req, res, next) => {
     return res.status(200).json({
       status: "ok",
       message: "Assessment updated successfully",
-      assessment: mapAssessmentRow(result.rows[0]),
+      assessment: {
+        ...mapAssessmentRow(result.rows[0]),
+        authorName: req.user.name,
+      },
     });
   } catch (error) {
     if (error instanceof SyntaxError) {
