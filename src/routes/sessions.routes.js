@@ -1,4 +1,5 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const { query } = require("../db");
 const { requireAuth } = require("../middleware/auth");
 
@@ -15,18 +16,39 @@ function ensureExpert(req, res, next) {
   return next();
 }
 
+// Helper to decode token and retrieve student user ID if present
+function getUserIdFromReq(req) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    if (authHeader.startsWith("Bearer ")) {
+      const token = authHeader.slice(7).trim();
+      const payload = jwt.verify(token, process.env.JWT_SECRET || "dev_jwt_secret");
+      return payload.id;
+    }
+  } catch (err) {}
+  return null;
+}
+
 /**
  * GET /api/sessions/me
- * Retrieve all group sessions hosted by the authenticated expert.
+ * Retrieve all group sessions hosted by the authenticated expert,
+ * including a list of booked students for each session.
  */
 router.get("/me", requireAuth, ensureExpert, async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT id, session_date, session_time, topic, content, created_at, updated_at
-       FROM group_sessions
-       WHERE expert_id = $1
-       ORDER BY session_date DESC, session_time DESC`,
-      [req.user.id],
+      `SELECT s.id, s.session_date, s.session_time, s.topic, s.content, s.meeting_link, s.meeting_details, s.created_at, s.updated_at,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'email', u.email))
+                 FROM group_session_bookings b
+                 JOIN unistudents u ON u.id = b.student_id
+                 WHERE b.session_id = s.id),
+                '[]'::json
+              ) AS attendees
+       FROM group_sessions s
+       WHERE s.expert_id = $1
+       ORDER BY s.session_date DESC, s.session_time DESC`,
+      [req.user.id]
     );
 
     return res.status(200).json({
@@ -42,15 +64,23 @@ router.get("/me", requireAuth, ensureExpert, async (req, res, next) => {
 /**
  * GET /api/sessions
  * Public/general endpoint to retrieve all group sessions.
+ * Returns is_booked flag if request is made by an authenticated student.
  */
 router.get("/", async (req, res, next) => {
   try {
+    const userId = getUserIdFromReq(req);
+
     const result = await query(
-      `SELECT s.id, s.session_date, s.session_time, s.topic, s.content, s.created_at, s.updated_at,
-              u.name AS expert_name, u.email AS expert_email
+      `SELECT s.id, s.session_date, s.session_time, s.topic, s.content, s.meeting_link, s.meeting_details, s.created_at, s.updated_at,
+              u.name AS expert_name, u.email AS expert_email,
+              EXISTS(
+                SELECT 1 FROM group_session_bookings b
+                WHERE b.session_id = s.id AND b.student_id = $1
+              ) AS is_booked
        FROM group_sessions s
        LEFT JOIN unistudents u ON u.id = s.expert_id
-       ORDER BY s.session_date ASC, s.session_time ASC`
+       ORDER BY s.session_date ASC, s.session_time ASC`,
+      [userId]
     );
 
     return res.status(200).json({
@@ -69,7 +99,7 @@ router.get("/", async (req, res, next) => {
  */
 router.post("/", requireAuth, ensureExpert, async (req, res, next) => {
   try {
-    const { session_date, session_time, topic, content } = req.body || {};
+    const { session_date, session_time, topic, content, meeting_link, meeting_details } = req.body || {};
 
     if (!session_date || !session_time || !topic) {
       return res.status(400).json({
@@ -79,16 +109,146 @@ router.post("/", requireAuth, ensureExpert, async (req, res, next) => {
     }
 
     const result = await query(
-      `INSERT INTO group_sessions (expert_id, session_date, session_time, topic, content, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-       RETURNING id, expert_id, session_date, session_time, topic, content, created_at, updated_at`,
-      [req.user.id, session_date, session_time.trim(), topic.trim(), content ? content.trim() : null]
+      `INSERT INTO group_sessions (expert_id, session_date, session_time, topic, content, meeting_link, meeting_details, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       RETURNING id, expert_id, session_date, session_time, topic, content, meeting_link, meeting_details, created_at, updated_at`,
+      [
+        req.user.id,
+        session_date,
+        session_time.trim(),
+        topic.trim(),
+        content ? content.trim() : null,
+        meeting_link ? meeting_link.trim() : null,
+        meeting_details ? meeting_details.trim() : null,
+      ]
     );
 
     return res.status(201).json({
       status: "ok",
       message: "Session created successfully",
       session: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/sessions/:id
+ * Update session meeting details (link and joining details).
+ */
+router.patch("/:id", requireAuth, ensureExpert, async (req, res, next) => {
+  try {
+    const sessionId = req.params.id;
+    const { meeting_link, meeting_details } = req.body || {};
+
+    // Check ownership
+    const checkRes = await query("SELECT expert_id FROM group_sessions WHERE id = $1", [sessionId]);
+    if (checkRes.rowCount === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Session not found",
+      });
+    }
+
+    const session = checkRes.rows[0];
+    const isOwner = String(session.expert_id) === String(req.user.id);
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        status: "error",
+        message: "You can only manage your own sessions",
+      });
+    }
+
+    const result = await query(
+      `UPDATE group_sessions
+       SET meeting_link = $1, meeting_details = $2, updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, expert_id, session_date, session_time, topic, content, meeting_link, meeting_details, created_at, updated_at`,
+      [
+        meeting_link !== undefined ? (meeting_link ? meeting_link.trim() : null) : null,
+        meeting_details !== undefined ? (meeting_details ? meeting_details.trim() : null) : null,
+        sessionId,
+      ]
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Session meeting details updated successfully",
+      session: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/sessions/:id/book
+ * Book a session for the student.
+ */
+router.post("/:id/book", requireAuth, async (req, res, next) => {
+  try {
+    const sessionId = req.params.id;
+
+    if (req.user.role !== "student") {
+      return res.status(403).json({
+        status: "error",
+        message: "Only students are allowed to book sessions",
+      });
+    }
+
+    // Check if session exists
+    const sessionCheck = await query("SELECT id FROM group_sessions WHERE id = $1", [sessionId]);
+    if (sessionCheck.rowCount === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Session not found",
+      });
+    }
+
+    // Insert booking
+    await query(
+      `INSERT INTO group_session_bookings (session_id, student_id, booked_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (session_id, student_id) DO NOTHING`,
+      [sessionId, req.user.id]
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Session booked successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/sessions/:id/cancel
+ * Cancel a booking for the student.
+ */
+router.post("/:id/cancel", requireAuth, async (req, res, next) => {
+  try {
+    const sessionId = req.params.id;
+
+    if (req.user.role !== "student") {
+      return res.status(403).json({
+        status: "error",
+        message: "Only students are allowed to cancel bookings",
+      });
+    }
+
+    await query(
+      `DELETE FROM group_session_bookings
+       WHERE session_id = $1 AND student_id = $2`,
+      [sessionId, req.user.id]
+    );
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Booking cancelled successfully",
     });
   } catch (error) {
     next(error);
