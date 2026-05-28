@@ -9,6 +9,7 @@ const assessmentsRouter = require("./assessments.routes");
 const unistudentsRouter = require("./unistudents.routes");
 const studentRegistryRouter = require("./student-registry.routes");
 const resourcesRouter = require("./resources.routes");
+const sessionsRouter = require("./sessions.routes");
 
 const router = express.Router();
 
@@ -22,5 +23,6 @@ router.use("/moods", moodsRouter);
 router.use("/unistudents", unistudentsRouter);
 router.use("/student-registry", studentRegistryRouter);
 router.use("/resources", resourcesRouter);
+router.use("/sessions", sessionsRouter);
 
 module.exports = router;
