@@ -225,10 +225,23 @@ router.get("/", requireAuth, requireAdmin, async (req, res, next) => {
 
     const result = await db.query(sql, params);
 
+    // Get count of each status
+    const summaryResult = await db.query(
+      "SELECT status, COUNT(*) as count FROM expert_applications GROUP BY status"
+    );
+    const summary = { pending: 0, approved: 0, rejected: 0 };
+    summaryResult.rows.forEach((row) => {
+      const s = String(row.status || "").toLowerCase();
+      if (summary[s] !== undefined) {
+        summary[s] = parseInt(row.count, 10);
+      }
+    });
+
     return res.status(200).json({
       status: "ok",
       count: result.rows.length,
       applications: result.rows,
+      summary,
     });
   } catch (err) {
     next(err);
