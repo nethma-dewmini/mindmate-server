@@ -4,37 +4,10 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const db = require("../db");
 const crypto = require("crypto");
+const { sendPasswordResetEmail } = require("../utils/emailService");
 
 async function sendResetEmail(email, link) {
-  // Only attempt to send if SMTP configured
-  const nodemailerConfigPresent =
-    process.env.MAIL_HOST && process.env.MAIL_USER && process.env.MAIL_PASS;
-  if (!nodemailerConfigPresent) return false;
-
-  try {
-    const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: Number(process.env.MAIL_PORT) || 587,
-      secure: process.env.MAIL_SECURE === "true",
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-    });
-
-    const info = await transporter.sendMail({
-      from: process.env.MAIL_FROM || process.env.MAIL_USER,
-      to: email,
-      subject: "MindMate Password Reset",
-      text: `Reset your password by visiting: ${link}`,
-      html: `<p>Reset your password by visiting: <a href="${link}">${link}</a></p>`,
-    });
-
-    return !!info;
-  } catch (err) {
-    return false;
-  }
+  return await sendPasswordResetEmail(email, link);
 }
 
 function generateToken() {
@@ -66,7 +39,7 @@ const UOM_INDEX_LETTER_MAP = {
 function getExpectedUomIndexLetter(indexNumber) {
   const normalized = String(indexNumber || "").trim();
 
-  if (!/^\d{6}[A-Za-z]$/.test(normalized)) {
+  if (!/^\d{6}[A-Z]$/.test(normalized)) {
     return null;
   }
 
@@ -148,13 +121,20 @@ router.post("/register", async (req, res, next) => {
       });
     }
 
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters long, containing at least one uppercase letter, one lowercase letter, and one number.",
+      });
+    }
+
     const normalizedEmail = normalizeStudentEmail(email);
     let normalizedRegistrationNo = null;
 
-    if (!role || !["student", "expert"].includes(role)) {
+    if (!role || !["student", "expert", "admin"].includes(role)) {
       return res.status(400).json({
         status: "error",
-        message: "Invalid role. Must be 'student' or 'expert'",
+        message: "Invalid role. Must be 'student', 'expert', or 'admin'",
       });
     }
 
@@ -170,6 +150,13 @@ router.post("/register", async (req, res, next) => {
         return res.status(400).json({
           status: "error",
           message: "Registration No is required for students",
+        });
+      }
+
+      if (!/^\d{6}[A-Z]$/.test(String(studentId).trim())) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid Registration No. The last letter must be a capital letter.",
         });
       }
 
@@ -443,6 +430,13 @@ router.post("/reset-password", async (req, res, next) => {
       return res.status(400).json({
         status: "error",
         message: "Token and new password are required",
+      });
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters long, containing at least one uppercase letter, one lowercase letter, and one number.",
       });
     }
 
