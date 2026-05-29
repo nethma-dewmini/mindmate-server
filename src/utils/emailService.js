@@ -200,7 +200,7 @@ const sendSessionBookingEmail = async ({
           <a href="${meetingLink}" target="_blank" style="background-color: #5bb5a1; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">Join Live Session</a>
         </div>
       ` : `
-        <p style="color: #e53e3e; font-style: italic;">The meeting link has not been created yet by the expert. Please check your student dashboard closer to the session time to retrieve the joining link.</p>
+        <p style="color: #e53e3e; font-style: italic;">The meeting link has not been created. Please check your student dashboard closer to the session time to retrieve the joining link.</p>
       `}
 
       ${meetingDetails ? `
@@ -210,7 +210,6 @@ const sendSessionBookingEmail = async ({
         </div>
       ` : ""}
 
-      <p style="margin-top: 25px;">If you can no longer attend, please cancel your booking from the dashboard so other students may take the seat.</p>
       <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
       <p style="font-size: 12px; color: #a0aec0; text-align: center;">The MindMate Support Team</p>
     </div>
@@ -219,9 +218,95 @@ const sendSessionBookingEmail = async ({
   return await sendMail({ to: studentEmail, subject, text, html });
 };
 
+/**
+ * Broadcast new session notification to all registered students
+ */
+const broadcastNewSessionEmail = async ({ session, expertName, students }) => {
+  const subject = `MindMate - New Live Group Session Scheduled: ${session.topic}`;
+
+  // Helper for batching / throttling
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const CHUNK_SIZE = 10;
+  const CHUNK_DELAY = 1000; // 1 second delay between chunks
+
+  // Format date
+  let dateStr = session.session_date;
+  if (session.session_date instanceof Date) {
+    dateStr = session.session_date.toLocaleDateString("en-US", {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+  } else if (typeof session.session_date === "string") {
+    try {
+      const parsed = new Date(session.session_date);
+      if (!isNaN(parsed.getTime())) {
+        dateStr = parsed.toLocaleDateString("en-US", {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+      }
+    } catch (e) {}
+  }
+
+  console.log(`📨 Starting session broadcast to ${students.length} students...`);
+
+  // Split students into chunks
+  for (let i = 0; i < students.length; i += CHUNK_SIZE) {
+    const chunk = students.slice(i, i + CHUNK_SIZE);
+    
+    // Process chunk in parallel
+    await Promise.all(
+      chunk.map(async (student) => {
+        try {
+          const text = `Hello ${student.name},\n\nA new live group session "${session.topic}" hosted by ${expertName} has been scheduled.\n\nSession Details:\n- Date: ${dateStr}\n- Time: ${session.session_time}\n- Topic: ${session.topic}\n- Description: ${session.content || "No description provided."}\n\nYou can log in to your MindMate dashboard to view or book this session.\n\nBest regards,\nThe MindMate Team`;
+          
+          const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+              <h2 style="color: #5bb5a1; border-bottom: 2px solid #5bb5a1; padding-bottom: 10px;">New Live Group Session Scheduled</h2>
+              <p>Hello ${student.name},</p>
+              <p>A new live group session has been scheduled that you can participate in to support your wellness journey:</p>
+              
+              <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #5bb5a1;">
+                <p style="margin: 5px 0;"><strong>Topic:</strong> ${session.topic}</p>
+                <p style="margin: 5px 0;"><strong>Hosted By:</strong> ${expertName}</p>
+                <p style="margin: 5px 0;"><strong>Date:</strong> ${dateStr}</p>
+                <p style="margin: 5px 0;"><strong>Time:</strong> ${session.session_time}</p>
+              </div>
+
+              ${session.content ? `
+                <div style="margin: 15px 0;">
+                  <strong>Description:</strong>
+                  <p style="margin-top: 5px; color: #4a5568; line-height: 1.5; white-space: pre-wrap;">${session.content}</p>
+                </div>
+              ` : ""}
+
+              <div style="margin: 30px 0; text-align: center;">
+                <a href="${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/login" style="background-color: #5bb5a1; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">Log In & Book Session</a>
+              </div>
+              <p>Take care of yourself,</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
+              <p style="font-size: 12px; color: #a0aec0; text-align: center;">The MindMate Support Team</p>
+            </div>
+          `;
+
+          await sendMail({ to: student.email, subject, text, html });
+        } catch (err) {
+          console.error(`❌ Failed to send broadcast email to ${student.email}:`, err);
+        }
+      })
+    );
+
+    // Apply throttling delay between chunks
+    if (i + CHUNK_SIZE < students.length) {
+      await delay(CHUNK_DELAY);
+    }
+  }
+
+  console.log(`📨 Completed session broadcast to all students.`);
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendExpertApplicationAdminNotification,
   sendExpertApplicationApprovedEmail,
   sendSessionBookingEmail,
+  broadcastNewSessionEmail,
 };

@@ -2,7 +2,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const { query } = require("../db");
 const { requireAuth } = require("../middleware/auth");
-const { sendSessionBookingEmail } = require("../utils/emailService");
+const { sendSessionBookingEmail, broadcastNewSessionEmail } = require("../utils/emailService");
 
 const router = express.Router();
 
@@ -124,10 +124,35 @@ router.post("/", requireAuth, ensureExpert, async (req, res, next) => {
       ]
     );
 
+    const session = result.rows[0];
+
+    // Asynchronously broadcast emails to all students (non-blocking)
+    (async () => {
+      try {
+        // Query expert details to get the name
+        const expertRes = await query("SELECT name FROM unistudents WHERE id = $1", [req.user.id]);
+        // Query all registered students
+        const studentsRes = await query("SELECT name, email FROM unistudents WHERE role = 'student'");
+
+        if (expertRes.rowCount > 0 && studentsRes.rowCount > 0) {
+          const expertName = expertRes.rows[0].name;
+          const students = studentsRes.rows;
+
+          await broadcastNewSessionEmail({
+            session,
+            expertName,
+            students,
+          });
+        }
+      } catch (err) {
+        console.error("❌ Failed to initiate session scheduling email broadcast:", err);
+      }
+    })();
+
     return res.status(201).json({
       status: "ok",
       message: "Session created successfully",
-      session: result.rows[0],
+      session,
     });
   } catch (error) {
     next(error);
