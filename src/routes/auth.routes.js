@@ -148,6 +148,13 @@ router.post("/register", async (req, res, next) => {
       });
     }
 
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters long, containing at least one uppercase letter, one lowercase letter, and one number.",
+      });
+    }
+
     const normalizedEmail = normalizeStudentEmail(email);
     let normalizedRegistrationNo = null;
 
@@ -450,6 +457,13 @@ router.post("/reset-password", async (req, res, next) => {
       return res.status(400).json({
         status: "error",
         message: "Token and new password are required",
+      });
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      return res.status(400).json({
+        status: "error",
+        message: "Password must be at least 8 characters long, containing at least one uppercase letter, one lowercase letter, and one number.",
       });
     }
 
