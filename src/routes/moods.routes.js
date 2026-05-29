@@ -13,17 +13,19 @@ router.get("/summary", async (req, res, next) => {
     const userId = req.user.id;
     const days = Number(req.query.days) || 30;
 
-    // 1. Get count and average mood
-    const summaryRes = await db.query(
-      `SELECT COUNT(*)::int AS count, 
-              AVG(mood)::numeric(10,1) AS avg_mood 
-       FROM mood_entries 
-       WHERE user_id = $1 AND created_at >= NOW() - ($2::int * INTERVAL '1 day')`,
-      [userId, days]
+    // 1. Get average mood for today only
+    const todayRes = await db.query(
+      "SELECT AVG(mood)::numeric(10,1) AS avg_mood FROM mood_entries WHERE user_id = $1 AND created_at::date = CURRENT_DATE",
+      [userId]
     );
+    const avgMood = todayRes.rows[0].avg_mood ? parseFloat(todayRes.rows[0].avg_mood) : 0;
 
-    const count = summaryRes.rows[0].count || 0;
-    const avgMood = parseFloat(summaryRes.rows[0].avg_mood || 0);
+    // 2. Get total days tracked (distinct days all time)
+    const countRes = await db.query(
+      "SELECT COUNT(DISTINCT created_at::date)::int AS count FROM mood_entries WHERE user_id = $1",
+      [userId]
+    );
+    const count = countRes.rows[0].count || 0;
 
     // 2. Get distinct entry dates to compute streak
     const dateRes = await db.query(
