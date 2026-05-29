@@ -20,7 +20,14 @@ router.get("/summary", async (req, res, next) => {
     );
     const avgMood = todayRes.rows[0].avg_mood ? parseFloat(todayRes.rows[0].avg_mood) : 0;
 
-    // 2. Get total days tracked (distinct days all time)
+    // 2. Get average mood for yesterday only
+    const yesterdayRes = await db.query(
+      "SELECT AVG(mood)::numeric(10,1) AS avg_mood_yesterday FROM mood_entries WHERE user_id = $1 AND created_at::date = CURRENT_DATE - 1",
+      [userId]
+    );
+    const avgMoodYesterday = yesterdayRes.rows[0].avg_mood_yesterday ? parseFloat(yesterdayRes.rows[0].avg_mood_yesterday) : 0;
+
+    // 3. Get total days tracked (distinct days all time)
     const countRes = await db.query(
       "SELECT COUNT(DISTINCT created_at::date)::int AS count FROM mood_entries WHERE user_id = $1",
       [userId]
@@ -78,6 +85,7 @@ router.get("/summary", async (req, res, next) => {
     res.json({
       count,
       avg_mood: avgMood,
+      avg_mood_yesterday: avgMoodYesterday,
       streak
     });
   } catch (err) {
