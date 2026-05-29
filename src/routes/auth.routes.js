@@ -4,37 +4,10 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const db = require("../db");
 const crypto = require("crypto");
+const { sendPasswordResetEmail } = require("../utils/emailService");
 
 async function sendResetEmail(email, link) {
-  // Only attempt to send if SMTP configured
-  const nodemailerConfigPresent =
-    process.env.MAIL_HOST && process.env.MAIL_USER && process.env.MAIL_PASS;
-  if (!nodemailerConfigPresent) return false;
-
-  try {
-    const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransport({
-      host: process.env.MAIL_HOST,
-      port: Number(process.env.MAIL_PORT) || 587,
-      secure: process.env.MAIL_SECURE === "true",
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-    });
-
-    const info = await transporter.sendMail({
-      from: process.env.MAIL_FROM || process.env.MAIL_USER,
-      to: email,
-      subject: "MindMate Password Reset",
-      text: `Reset your password by visiting: ${link}`,
-      html: `<p>Reset your password by visiting: <a href="${link}">${link}</a></p>`,
-    });
-
-    return !!info;
-  } catch (err) {
-    return false;
-  }
+  return await sendPasswordResetEmail(email, link);
 }
 
 function generateToken() {
@@ -158,10 +131,10 @@ router.post("/register", async (req, res, next) => {
     const normalizedEmail = normalizeStudentEmail(email);
     let normalizedRegistrationNo = null;
 
-    if (!role || !["student", "expert"].includes(role)) {
+    if (!role || !["student", "expert", "admin"].includes(role)) {
       return res.status(400).json({
         status: "error",
-        message: "Invalid role. Must be 'student' or 'expert'",
+        message: "Invalid role. Must be 'student', 'expert', or 'admin'",
       });
     }
 

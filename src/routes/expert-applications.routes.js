@@ -5,6 +5,10 @@ const path = require("path");
 const fs = require("fs");
 const db = require("../db");
 const { requireAuth, requireAdmin } = require("../middleware/auth");
+const {
+  sendExpertApplicationAdminNotification,
+  sendExpertApplicationApprovedEmail,
+} = require("../utils/emailService");
 
 // Configure multer for file uploads
 const uploadsDir = path.join(__dirname, "../../uploads/expert-applications");
@@ -112,6 +116,14 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
     ]);
 
     const application = result.rows[0];
+
+    // Send admin notification email (non-blocking, handled safely)
+    sendExpertApplicationAdminNotification({
+      name: application.name,
+      title: application.title,
+      email: application.email,
+      specialization: specialization || null,
+    }).catch((err) => console.error("Error sending admin notification email:", err));
 
     return res.status(201).json({
       status: "ok",
@@ -281,7 +293,14 @@ router.patch("/:id", requireAuth, requireAdmin, async (req, res, next) => {
         .json({ status: "error", message: "Application not found" });
     }
 
-    return res.status(200).json({ status: "ok", application: result.rows[0] });
+    const application = result.rows[0];
+    if (normalized === "approved") {
+      sendExpertApplicationApprovedEmail(application.email, application.name).catch((err) =>
+        console.error("Error sending expert approval email:", err)
+      );
+    }
+
+    return res.status(200).json({ status: "ok", application });
   } catch (err) {
     next(err);
   }

@@ -2,6 +2,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const { query } = require("../db");
 const { requireAuth } = require("../middleware/auth");
+const { sendSessionBookingEmail } = require("../utils/emailService");
 
 const router = express.Router();
 
@@ -209,12 +210,46 @@ router.post("/:id/book", requireAuth, async (req, res, next) => {
     }
 
     // Insert booking
-    await query(
+    const bookingRes = await query(
       `INSERT INTO group_session_bookings (session_id, student_id, booked_at)
        VALUES ($1, $2, NOW())
        ON CONFLICT (session_id, student_id) DO NOTHING`,
       [sessionId, req.user.id]
     );
+
+    if (bookingRes.rowCount > 0) {
+      try {
+        // Fetch student email and name
+        const studentRes = await query("SELECT name, email FROM unistudents WHERE id = $1", [req.user.id]);
+        // Fetch session and host expert details
+        const sessionInfoRes = await query(
+          `SELECT s.topic, s.content, s.session_date, s.session_time, s.meeting_link, s.meeting_details,
+                  u.name AS expert_name, u.email AS expert_email
+           FROM group_sessions s
+           LEFT JOIN unistudents u ON u.id = s.expert_id
+           WHERE s.id = $1`,
+          [sessionId]
+        );
+
+        if (studentRes.rowCount > 0 && sessionInfoRes.rowCount > 0) {
+          const student = studentRes.rows[0];
+          const session = sessionInfoRes.rows[0];
+
+          sendSessionBookingEmail({
+            studentEmail: student.email,
+            studentName: student.name,
+            expertName: session.expert_name,
+            topic: session.topic,
+            sessionDate: session.session_date,
+            sessionTime: session.session_time,
+            meetingLink: session.meeting_link,
+            meetingDetails: session.meeting_details,
+          }).catch((err) => console.error("Error sending session booking confirmation email:", err));
+        }
+      } catch (err) {
+        console.error("Error preparing session booking confirmation email:", err);
+      }
+    }
 
     return res.status(200).json({
       status: "ok",
