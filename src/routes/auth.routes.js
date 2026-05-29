@@ -66,7 +66,7 @@ const UOM_INDEX_LETTER_MAP = {
 function getExpectedUomIndexLetter(indexNumber) {
   const normalized = String(indexNumber || "").trim();
 
-  if (!/^\d{6}[A-Za-z]$/.test(normalized)) {
+  if (!/^\d{6}[A-Z]$/.test(normalized)) {
     return null;
   }
 
@@ -170,6 +170,13 @@ router.post("/register", async (req, res, next) => {
         return res.status(400).json({
           status: "error",
           message: "Registration No is required for students",
+        });
+      }
+
+      if (!/^\d{6}[A-Z]$/.test(String(studentId).trim())) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid Registration No. The last letter must be a capital letter.",
         });
       }
 

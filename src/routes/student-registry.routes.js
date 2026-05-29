@@ -64,6 +64,13 @@ router.post("/", requireAuth, requireAdmin, async (req, res, next) => {
       });
     }
 
+    if (!/^\d{6}[A-Z]$/.test(String(registration_no).trim())) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid Registration No. The last letter must be a capital letter.",
+      });
+    }
+
     const normalizedRegistrationNo = normalizeRegistrationNo(registration_no);
     const normalizedEmail = normalizeEmail(email);
 
