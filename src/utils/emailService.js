@@ -122,13 +122,13 @@ const sendExpertApplicationAdminNotification = async (app) => {
  */
 const sendExpertApplicationApprovedEmail = async (email, name) => {
   const subject = "MindMate - Your Expert Application Has Been Approved!";
-  const text = `Hello ${name},\n\nWe are excited to inform you that your application to join MindMate as a licensed mental health professional has been approved! You can now log in using your registered credentials to set up your expert dashboard, schedule sessions, and connect with students.\n\nBest regards,\nThe MindMate Team`;
+  const text = `Hello ${name},\n\nWe are excited to inform you that your application to join MindMate as a licensed mental health professional has been approved! Before you can log in, please register your account and set up your password at the expert registration page: ${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/expert/register?email=${encodeURIComponent(email)}\n\nBest regards,\nThe MindMate Team`;
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
       <h2 style="color: #5bb5a1; border-bottom: 2px solid #5bb5a1; padding-bottom: 10px;">Application Approved!</h2>
       <p>Hello ${name},</p>
       <p>We are delighted to inform you that your application to join MindMate as a licensed mental health professional has been **approved** by our administration team!</p>
-      <p>You can now log in to the MindMate platform using your registered credentials to:</p>
+      <p>Please register your account and set up your password to get started. Once registered, you will be able to:</p>
       <ul>
         <li>Access your Expert Dashboard</li>
         <li>Create and schedule live group sessions for students</li>
@@ -136,7 +136,7 @@ const sendExpertApplicationApprovedEmail = async (email, name) => {
         <li>Review student assessments and support requests</li>
       </ul>
       <div style="margin: 30px 0; text-align: center;">
-        <a href="${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/login" style="background-color: #5bb5a1; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">Log In to Dashboard</a>
+        <a href="${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/expert/register?email=${encodeURIComponent(email)}" style="background-color: #5bb5a1; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">Create Expert Account</a>
       </div>
       <p>Welcome to our community, and thank you for partnering with us to support student mental wellness!</p>
       <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
