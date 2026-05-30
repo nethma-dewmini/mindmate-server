@@ -12,9 +12,11 @@ router.get("/profile/me", requireAuth, async (req, res, next) => {
 
     // Fetch user details
     const userRes = await db.query(
-      `SELECT id, name, email, role, registration_no, bio, phone, created_at 
-       FROM unistudents 
-       WHERE id = $1 LIMIT 1`,
+      `SELECT u.id, u.name, u.email, u.role, u.registration_no, u.bio, u.phone, u.created_at,
+              e.specialization, e.qualifications, e.license_number
+       FROM unistudents u
+       LEFT JOIN experts e ON e.user_id = u.id
+       WHERE u.id = $1 LIMIT 1`,
       [userId]
     );
 
@@ -129,25 +131,34 @@ router.put("/profile/me", requireAuth, async (req, res, next) => {
       });
     }
 
-    const result = await db.query(
+    const updateRes = await db.query(
       `UPDATE unistudents 
        SET name = $1, bio = $2, phone = $3, updated_at = NOW() 
-       WHERE id = $4 
-       RETURNING id, name, email, role, registration_no, bio, phone, created_at`,
+       WHERE id = $4`,
       [name.trim(), bio ? bio.trim() : null, phone ? phone.trim() : null, userId]
     );
 
-    if (result.rowCount === 0) {
+    if (updateRes.rowCount === 0) {
       return res.status(404).json({
         status: "error",
         message: "User not found",
       });
     }
 
+    // Fetch the updated user details with joined expert fields
+    const userRes = await db.query(
+      `SELECT u.id, u.name, u.email, u.role, u.registration_no, u.bio, u.phone, u.created_at,
+              e.specialization, e.qualifications, e.license_number
+       FROM unistudents u
+       LEFT JOIN experts e ON e.user_id = u.id
+       WHERE u.id = $1 LIMIT 1`,
+      [userId]
+    );
+
     return res.status(200).json({
       status: "ok",
       message: "Profile updated successfully",
-      user: result.rows[0],
+      user: userRes.rows[0],
     });
   } catch (err) {
     next(err);
