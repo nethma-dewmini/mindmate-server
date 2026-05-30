@@ -39,8 +39,6 @@ function requireStudent(req, res, next) {
   return next();
 }
 
-
-
 // Protect all routes under this router
 router.use(requireAuth);
 router.use(requireStudent);
@@ -67,7 +65,7 @@ router.get("/", async (req, res, next) => {
 
 /**
  * POST /api/chatbot
- * Send a message and retrieve the AI assistant's response
+ * Send a message and retrieve the AI assistant's response from Gemini API
  */
 router.post("/", async (req, res, next) => {
   try {
@@ -79,6 +77,14 @@ router.post("/", async (req, res, next) => {
       return res.status(400).json({
         status: "error",
         message: "Message content is required",
+      });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        status: "error",
+        message: "AI Chatbot service is not configured (missing Gemini API Key).",
       });
     }
 
@@ -98,16 +104,7 @@ router.post("/", async (req, res, next) => {
     );
     const contextMessages = contextRes.rows.reverse();
 
-    // 3. Generate chatbot response via Gemini API (strict, no mock fallback)
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      return res.status(500).json({
-        status: "error",
-        message: "Gemini API key is not configured on the server",
-      });
-    }
-
+    // 3. Generate chatbot response via Gemini API
     const geminiContents = contextMessages.map((msg) => ({
       role: msg.role === "assistant" ? "model" : "user",
       parts: [{ text: msg.content }],
@@ -117,7 +114,7 @@ router.post("/", async (req, res, next) => {
       "You are MindMate, a warm, empathetic, and professional mental health AI companion. Your goal is to support students with stress, anxiety, academic pressure, and emotional well-being. Provide gentle validation, active listening, and evidence-based coping strategies (like mindfulness, breathing exercises, cognitive reframing, and study planning). If the student expresses severe distress, self-harm, or emergency situations, gently encourage them to seek professional support, connect them with clinical resources, and remind them that you are an AI assistant and not a replacement for professional therapy. Keep responses warm, encouraging, concise (2-4 sentences is usually ideal), and structured with paragraphs. Do not give medical diagnoses or prescribe medications.";
 
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: {
@@ -134,21 +131,16 @@ router.post("/", async (req, res, next) => {
 
     if (!geminiResponse.ok) {
       const errData = await geminiResponse.json().catch(() => ({}));
-      return res.status(500).json({
-        status: "error",
-        message: `Gemini API returned status ${geminiResponse.status}`,
-        details: errData,
-      });
+      throw new Error(
+        `Gemini API returned status ${geminiResponse.status}: ${JSON.stringify(errData)}`
+      );
     }
 
     const data = await geminiResponse.json();
     const botResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!botResponse) {
-      return res.status(500).json({
-        status: "error",
-        message: "Invalid or empty response format from Gemini API",
-      });
+      throw new Error("Invalid response format from Gemini API");
     }
 
     // 4. Persist Bot Message
