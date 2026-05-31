@@ -13,22 +13,9 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const resourceFolder = path.join(uploadsDir, `resource-${Date.now()}`);
-    req.resourceFolder = resourceFolder;
+const supabaseService = require("../utils/supabaseService");
 
-    if (!fs.existsSync(resourceFolder)) {
-      fs.mkdirSync(resourceFolder, { recursive: true });
-    }
-
-    cb(null, resourceFolder);
-  },
-  filename: (req, file, cb) => {
-    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, `${Date.now()}-${sanitized}`);
-  },
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -88,9 +75,9 @@ function mapResourceRow(row) {
   };
 }
 
-function getResourceFolderFromUrl(contentUrl) {
+async function deleteResourceFromStorage(contentUrl) {
   if (!contentUrl) {
-    return null;
+    return;
   }
 
   const prefix = "/api/uploads/resources/";
@@ -99,16 +86,33 @@ function getResourceFolderFromUrl(contentUrl) {
     : null;
 
   if (!relativePath) {
-    return null;
+    return;
   }
 
-  const [folderName] = relativePath.split("/");
-  return folderName ? path.join(uploadsDir, folderName) : null;
-}
+  const parts = relativePath.split("/");
+  if (parts.length < 2) return;
 
-function removeFolderIfExists(folderPath) {
-  if (folderPath && fs.existsSync(folderPath)) {
-    fs.rmSync(folderPath, { recursive: true, force: true });
+  const folderName = parts[0];
+  const filename = parts[1];
+  const filePathInBucket = `${folderName}/${filename}`;
+
+  // Delete from Supabase if configured
+  if (supabaseService.isConfigured()) {
+    try {
+      await supabaseService.deleteFile("expert-resources", filePathInBucket);
+    } catch (err) {
+      console.error("Failed to delete file from Supabase:", err);
+    }
+  }
+
+  // Fallback / legacy local cleanup
+  const localFolder = path.join(uploadsDir, folderName);
+  if (fs.existsSync(localFolder)) {
+    try {
+      fs.rmSync(localFolder, { recursive: true, force: true });
+    } catch (err) {
+      console.error("Failed to delete local folder:", err);
+    }
   }
 }
 
@@ -260,9 +264,26 @@ router.post(
         });
       }
 
-      const fileUrl = req.file
-        ? `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`
-        : videoUrl || audioUrl;
+      let fileUrl = videoUrl || audioUrl || null;
+      if (req.file) {
+        const folderName = `resource-${Date.now()}`;
+        const sanitized = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filename = `${Date.now()}-${sanitized}`;
+        const filePath = `${folderName}/${filename}`;
+
+        if (supabaseService.isConfigured()) {
+          await supabaseService.uploadFile("expert-resources", filePath, req.file.buffer, req.file.mimetype);
+        } else {
+          // Local fallback
+          const localFolder = path.join(uploadsDir, folderName);
+          if (!fs.existsSync(localFolder)) {
+            fs.mkdirSync(localFolder, { recursive: true });
+          }
+          fs.writeFileSync(path.join(localFolder, filename), req.file.buffer);
+        }
+
+        fileUrl = `/api/uploads/resources/${filePath}`;
+      }
 
       const result = await query(
         `INSERT INTO resources (
@@ -325,11 +346,26 @@ router.patch(
         });
       }
 
-      const nextContentUrl = req.file
-        ? `/api/uploads/resources/${path.basename(req.resourceFolder)}/${req.file.filename}`
-        : req.body.videoUrl ||
-          req.body.audioUrl ||
-          existingResource.content_url;
+      let nextContentUrl = req.body.videoUrl || req.body.audioUrl || existingResource.content_url;
+      if (req.file) {
+        const folderName = `resource-${Date.now()}`;
+        const sanitized = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filename = `${Date.now()}-${sanitized}`;
+        const filePath = `${folderName}/${filename}`;
+
+        if (supabaseService.isConfigured()) {
+          await supabaseService.uploadFile("expert-resources", filePath, req.file.buffer, req.file.mimetype);
+        } else {
+          // Local fallback
+          const localFolder = path.join(uploadsDir, folderName);
+          if (!fs.existsSync(localFolder)) {
+            fs.mkdirSync(localFolder, { recursive: true });
+          }
+          fs.writeFileSync(path.join(localFolder, filename), req.file.buffer);
+        }
+
+        nextContentUrl = `/api/uploads/resources/${filePath}`;
+      }
 
       const updateResult = await query(
         `UPDATE resources
@@ -353,15 +389,10 @@ router.patch(
         ],
       );
 
-      if (req.file) {
-        const previousFolder = getResourceFolderFromUrl(
-          existingResource.content_url,
+      if (req.file && existingResource.content_url) {
+        deleteResourceFromStorage(existingResource.content_url).catch((err) =>
+          console.error("Error cleaning up old resource file:", err)
         );
-        const nextFolder = getResourceFolderFromUrl(nextContentUrl);
-
-        if (previousFolder && previousFolder !== nextFolder) {
-          removeFolderIfExists(previousFolder);
-        }
       }
 
       return res.status(200).json({
@@ -389,10 +420,11 @@ router.delete("/:id", requireAuth, ensureExpert, async (req, res, next) => {
 
     await query("DELETE FROM resources WHERE id = $1", [resourceId]);
 
-    const resourceFolder = getResourceFolderFromUrl(
-      existingResource.content_url,
-    );
-    removeFolderIfExists(resourceFolder);
+    if (existingResource.content_url) {
+      deleteResourceFromStorage(existingResource.content_url).catch((err) =>
+        console.error("Error deleting resource file:", err)
+      );
+    }
 
     return res.status(200).json({
       status: "ok",

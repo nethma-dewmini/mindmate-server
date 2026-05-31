@@ -9,8 +9,9 @@ const {
   sendExpertApplicationAdminNotification,
   sendExpertApplicationApprovedEmail,
 } = require("../utils/emailService");
+const supabaseService = require("../utils/supabaseService");
 
-// Configure multer for file uploads
+// Configure multer for file uploads in memory
 const uploadsDir = path.join(__dirname, "../../uploads/expert-applications");
 
 // Ensure uploads directory exists
@@ -18,22 +19,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Create a folder per application (timestamp-based)
-    const appFolder = path.join(uploadsDir, `app-${Date.now()}`);
-    if (!fs.existsSync(appFolder)) {
-      fs.mkdirSync(appFolder, { recursive: true });
-    }
-    req.appFolder = appFolder;
-    cb(null, appFolder);
-  },
-  filename: (req, file, cb) => {
-    // Keep original filename but sanitize
-    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-    cb(null, sanitized);
-  },
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
@@ -61,6 +47,7 @@ const upload = multer({
 // POST /api/expert-applications/apply
 // Submit an expert application with documents
 router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
+  let folderName = "";
   try {
     const { name, title, email, specialization } = req.body || {};
 
@@ -91,15 +78,55 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
       });
     }
 
-    // Build documents array with file info
-    const documents = req.files.map((file) => ({
-      name: file.originalname,
-      path: file.path,
-      relativePath: `expert-applications/${path.basename(req.appFolder)}/${file.filename}`,
-      mimeType: file.mimetype,
-      size: file.size,
-      uploadedAt: new Date().toISOString(),
-    }));
+    folderName = `app-${Date.now()}`;
+    const documents = [];
+
+    if (supabaseService.isConfigured()) {
+      // Upload to Supabase Storage
+      for (const file of req.files) {
+        const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${folderName}/${sanitized}`;
+
+        await supabaseService.uploadFile(
+          "expert-applications",
+          filePath,
+          file.buffer,
+          file.mimetype
+        );
+
+        documents.push({
+          name: file.originalname,
+          path: `/api/uploads/expert-applications/${filePath}`,
+          relativePath: `expert-applications/${folderName}/${sanitized}`,
+          mimeType: file.mimetype,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+    } else {
+      // Fallback: Write files to local disk
+      const appFolder = path.join(uploadsDir, folderName);
+      if (!fs.existsSync(appFolder)) {
+        fs.mkdirSync(appFolder, { recursive: true });
+      }
+      req.appFolder = appFolder;
+
+      for (const file of req.files) {
+        const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const localFilePath = path.join(appFolder, sanitized);
+
+        fs.writeFileSync(localFilePath, file.buffer);
+
+        documents.push({
+          name: file.originalname,
+          path: localFilePath,
+          relativePath: `expert-applications/${folderName}/${sanitized}`,
+          mimeType: file.mimetype,
+          size: file.size,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+    }
 
     // Insert application into DB
     const insertSql = `INSERT INTO expert_applications 
@@ -140,7 +167,13 @@ router.post("/apply", upload.array("documents", 10), async (req, res, next) => {
     });
   } catch (err) {
     // Clean up uploaded files on error
-    if (req.appFolder && fs.existsSync(req.appFolder)) {
+    if (supabaseService.isConfigured() && folderName) {
+      for (const file of req.files || []) {
+        const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const filePath = `${folderName}/${sanitized}`;
+        supabaseService.deleteFile("expert-applications", filePath).catch(() => {});
+      }
+    } else if (req.appFolder && fs.existsSync(req.appFolder)) {
       fs.rmSync(req.appFolder, { recursive: true });
     }
     next(err);
