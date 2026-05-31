@@ -48,7 +48,7 @@ PASSWORD_RESET_EXPIRES_MIN=60
 ALLOW_EMAIL_VERIFICATION_BYPASS=true
 ADMIN_EMAIL=
 
-# MindMate AI Chatbot key (Required for AI generation; returns 500 error if omitted)
+# MindMate AI Chatbot key (optional, falls back to a simulated engine if omitted)
 GEMINI_API_KEY=your_gemini_api_key
 ```
 
