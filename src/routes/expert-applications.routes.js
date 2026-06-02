@@ -16,7 +16,11 @@ const uploadsDir = path.join(__dirname, "../../uploads/expert-applications");
 
 // Ensure uploads directory exists
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch (err) {
+    console.warn("Could not create local uploads directory (this is normal on read-only serverless environments like Vercel):", err.message);
+  }
 }
 
 const storage = multer.memoryStorage();
