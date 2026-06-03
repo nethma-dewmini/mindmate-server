@@ -339,11 +339,76 @@ const sendContactSubmissionEmail = async ({ name, email, subject, message }) => 
   return await sendMail({ to: adminEmail, subject: emailSubject, text, html });
 };
 
+/**
+ * Send session cancellation notification email to the expert
+ */
+const sendSessionCancelationEmail = async ({
+  expertEmail,
+  expertName,
+  studentName,
+  studentEmail,
+  topic,
+  sessionDate,
+  sessionTime,
+  reason
+}) => {
+  const subject = `MindMate - Booking Cancelled: ${studentName} for "${topic}"`;
+  
+  // Format the date
+  let dateStr = sessionDate;
+  if (sessionDate instanceof Date) {
+    dateStr = sessionDate.toLocaleDateString("en-US", {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+  } else if (typeof sessionDate === "string") {
+    try {
+      const parsed = new Date(sessionDate);
+      if (!isNaN(parsed.getTime())) {
+        dateStr = parsed.toLocaleDateString("en-US", {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+      }
+    } catch (e) {}
+  }
+
+  const text = `Hello ${expertName},\n\nA student has cancelled their booking for your live group session "${topic}".\n\nCancellation Details:\n- Student Name: ${studentName}\n- Student Email: ${studentEmail}\n- Session Date: ${dateStr}\n- Session Time: ${sessionTime}\n- Reason for Cancellation: ${reason || "No reason provided."}\n\nBest regards,\nThe MindMate Team`;
+  
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #e53e3e; border-bottom: 2px solid #e53e3e; padding-bottom: 10px;">Live Session Booking Cancelled</h2>
+      <p>Hello ${expertName},</p>
+      <p>We are writing to inform you that a student has cancelled their booking for your upcoming live group session.</p>
+      
+      <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #e53e3e;">
+        <p style="margin: 5px 0;"><strong>Topic:</strong> ${topic}</p>
+        <p style="margin: 5px 0;"><strong>Date:</strong> ${dateStr}</p>
+        <p style="margin: 5px 0;"><strong>Time:</strong> ${sessionTime}</p>
+      </div>
+
+      <h3 style="color: #2d3748;">Student Info</h3>
+      <p style="margin: 5px 0;"><strong>Name:</strong> ${studentName}</p>
+      <p style="margin: 5px 0;"><strong>Email:</strong> ${studentEmail}</p>
+
+      <h3 style="color: #2d3748;">Reason for Cancellation</h3>
+      <div style="background-color: #fff5f5; padding: 15px; border-radius: 8px; border: 1px solid #fed7d7; margin-top: 5px; font-size: 14px; color: #9b2c2c; line-height: 1.5; white-space: pre-wrap;">
+        ${reason || "No reason provided."}
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
+      <p style="font-size: 12px; color: #a0aec0; text-align: center;">The MindMate Support Team</p>
+    </div>
+  `;
+
+  return await sendMail({ to: expertEmail, subject, text, html });
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendExpertApplicationAdminNotification,
   sendExpertApplicationApprovedEmail,
   sendSessionBookingEmail,
+  sendSessionCancelationEmail,
   broadcastNewSessionEmail,
   sendContactSubmissionEmail,
 };
+

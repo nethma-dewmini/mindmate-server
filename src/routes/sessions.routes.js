@@ -2,7 +2,7 @@ const express = require("express");
 const jwt = require("jsonwebtoken");
 const { query } = require("../db");
 const { requireAuth } = require("../middleware/auth");
-const { sendSessionBookingEmail, broadcastNewSessionEmail } = require("../utils/emailService");
+const { sendSessionBookingEmail, broadcastNewSessionEmail, sendSessionCancelationEmail } = require("../utils/emailService");
 
 const router = express.Router();
 
@@ -292,6 +292,7 @@ router.post("/:id/book", requireAuth, async (req, res, next) => {
 router.post("/:id/cancel", requireAuth, async (req, res, next) => {
   try {
     const sessionId = req.params.id;
+    const { reason } = req.body || {};
 
     if (req.user.role !== "student") {
       return res.status(403).json({
@@ -300,11 +301,57 @@ router.post("/:id/cancel", requireAuth, async (req, res, next) => {
       });
     }
 
+    // Retrieve details before deleting the booking
+    const bookingDetailsRes = await query(
+      `SELECT 
+        s.topic, s.session_date, s.session_time,
+        e.name AS expert_name, e.email AS expert_email,
+        stud.name AS student_name, stud.email AS student_email
+       FROM group_session_bookings b
+       JOIN group_sessions s ON s.id = b.session_id
+       JOIN unistudents e ON e.id = s.expert_id
+       JOIN unistudents stud ON stud.id = b.student_id
+       WHERE b.session_id = $1 AND b.student_id = $2`,
+      [sessionId, req.user.id]
+    );
+
+    if (bookingDetailsRes.rowCount === 0) {
+      return res.status(404).json({
+        status: "error",
+        message: "Booking not found",
+      });
+    }
+
+    const {
+      topic,
+      session_date,
+      session_time,
+      expert_name,
+      expert_email,
+      student_name,
+      student_email,
+    } = bookingDetailsRes.rows[0];
+
+    // Delete the booking record
     await query(
       `DELETE FROM group_session_bookings
        WHERE session_id = $1 AND student_id = $2`,
       [sessionId, req.user.id]
     );
+
+    // Asynchronously send session cancellation email to the expert
+    sendSessionCancelationEmail({
+      expertEmail: expert_email,
+      expertName: expert_name,
+      studentName: student_name,
+      studentEmail: student_email,
+      topic,
+      sessionDate: session_date,
+      sessionTime: session_time,
+      reason: reason ? reason.trim() : "",
+    }).catch((err) => {
+      console.error("❌ Failed to send session cancellation email:", err);
+    });
 
     return res.status(200).json({
       status: "ok",
