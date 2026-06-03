@@ -48,7 +48,6 @@ const sendMail = async ({ to, subject, text, html }) => {
       text,
       html,
     });
-    console.log(`📨 Email sent successfully to ${to} (ID: ${info.messageId})`);
     return !!info;
   } catch (err) {
     console.error("❌ Failed to send email via SMTP:", err);
@@ -303,10 +302,48 @@ const broadcastNewSessionEmail = async ({ session, expertName, students }) => {
   console.log(`📨 Completed session broadcast to all students.`);
 };
 
+/**
+ * Send contact form submission email to admin
+ */
+const sendContactSubmissionEmail = async ({ name, email, subject, message }) => {
+  const adminEmail = process.env.ADMIN_EMAIL || "admin@mindmate.com";
+  const emailSubject = `[MindMate Support] New Message: ${subject || "No Subject"}`;
+  const text = `You received a new message from ${name} (${email}).\n\nSubject: ${subject || "N/A"}\nMessage:\n${message}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #2c6e5f; border-bottom: 2px solid #2c6e5f; padding-bottom: 10px;">New Support Inquiry</h2>
+      <p>Hello Admin,</p>
+      <p>A user has submitted a message via the MindMate Contact Support page:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <tr>
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #edf2f7; width: 120px;">Name:</td>
+          <td style="padding: 8px; border-bottom: 1px solid #edf2f7;">${name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #edf2f7;">Email:</td>
+          <td style="padding: 8px; border-bottom: 1px solid #edf2f7; color: #2c6e5f;">${email}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; font-weight: bold; border-bottom: 1px solid #edf2f7;">Subject:</td>
+          <td style="padding: 8px; border-bottom: 1px solid #edf2f7;">${subject || "N/A"}</td>
+        </tr>
+      </table>
+      <div style="background-color: #f7fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 15px; white-space: pre-wrap; font-size: 14px; color: #4a5568; line-height: 1.6;">
+        <strong>Message Content:</strong><br/><br/>
+        ${message}
+      </div>
+      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
+      <p style="font-size: 12px; color: #a0aec0; text-align: center;">MindMate Support Solutions</p>
+    </div>
+  `;
+  return await sendMail({ to: adminEmail, subject: emailSubject, text, html });
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendExpertApplicationAdminNotification,
   sendExpertApplicationApprovedEmail,
   sendSessionBookingEmail,
   broadcastNewSessionEmail,
+  sendContactSubmissionEmail,
 };
