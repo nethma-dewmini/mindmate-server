@@ -11,6 +11,8 @@ const studentRegistryRouter = require("./student-registry.routes");
 const resourcesRouter = require("./resources.routes");
 const sessionsRouter = require("./sessions.routes");
 const chatbotRouter = require("./chatbot.routes");
+const contactRouter = require("./contact.routes");
+
 
 const router = express.Router();
 
@@ -26,5 +28,7 @@ router.use("/student-registry", studentRegistryRouter);
 router.use("/resources", resourcesRouter);
 router.use("/sessions", sessionsRouter);
 router.use("/chatbot", chatbotRouter);
+router.use("/contact", contactRouter);
+
 
 module.exports = router;
