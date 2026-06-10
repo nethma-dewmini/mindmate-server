@@ -1,29 +1,9 @@
 const express = require("express");
-const { checkConnection } = require("../db");
+const healthController = require("../controllers/health.controller");
 
 const router = express.Router();
 
-router.get("/", (req, res) => {
-  res.status(200).json({
-    status: "ok",
-    service: "mindmate-server",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-router.get("/db", async (req, res, next) => {
-  try {
-    const nowRow = await checkConnection();
-
-    res.status(200).json({
-      status: "ok",
-      service: "mindmate-server",
-      database: "connected",
-      timestamp: nowRow.now,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+router.get("/", healthController.getPing);
+router.get("/db", healthController.getDbHealth);
 
 module.exports = router;
