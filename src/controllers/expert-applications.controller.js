@@ -171,6 +171,9 @@ exports.updateStatus = async (req, res, next) => {
       sendExpertApplicationApprovedEmail(application.email, application.name).catch((err) =>
         console.error("Error sending expert approval email:", err)
       );
+    } else if (normalized === "rejected") {
+      const db = require('../db');
+      await db.query("DELETE FROM unistudents WHERE LOWER(email) = LOWER($1) AND role = 'expert'", [application.email]);
     }
 
     return res.status(200).json({ status: "ok", application });
