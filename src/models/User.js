@@ -3,7 +3,7 @@ const db = require('../db');
 class User {
   static async findByEmail(email) {
     const result = await db.query(
-      `SELECT id, name, email, password_hash, role, registration_no 
+      `SELECT id, name, email, password_hash, role, registration_no, is_verified 
        FROM unistudents 
        WHERE LOWER(email) = LOWER($1) LIMIT 1`,
       [email]
