@@ -19,12 +19,12 @@ class User {
     return result.rows[0] || null;
   }
 
-  static async createStudent({ name, email, passwordHash, role, registrationNo }) {
+  static async createStudent({ name, email, passwordHash, role, registrationNo, verificationToken, verificationTokenExpires }) {
     const result = await db.query(
-      `INSERT INTO unistudents (name, email, password_hash, role, registration_no, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      `INSERT INTO unistudents (name, email, password_hash, role, registration_no, is_verified, verification_token, verification_token_expires, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, false, $6, $7, NOW(), NOW())
        RETURNING id, name, email, role, registration_no, created_at`,
-      [name, email, passwordHash, role, registrationNo]
+      [name, email, passwordHash, role, registrationNo, verificationToken, verificationTokenExpires]
     );
     return result.rows[0];
   }
@@ -97,6 +97,28 @@ class User {
     const result = await db.query(
       "SELECT id, name, email, role, registration_no, bio, phone, is_verified, created_at FROM unistudents WHERE id = $1 LIMIT 1",
       [id]
+    );
+    return result.rows[0] || null;
+  }
+
+  static async verifyEmailToken(token) {
+    const result = await db.query(
+      `UPDATE unistudents 
+       SET is_verified = true, verification_token = NULL, verification_token_expires = NULL, updated_at = NOW()
+       WHERE verification_token = $1 AND verification_token_expires > NOW()
+       RETURNING id, name, email`,
+      [token]
+    );
+    return result.rows[0] || null;
+  }
+
+  static async setNewVerificationToken(email, token, expires) {
+    const result = await db.query(
+      `UPDATE unistudents 
+       SET verification_token = $1, verification_token_expires = $2, updated_at = NOW()
+       WHERE LOWER(email) = LOWER($3) AND is_verified = false
+       RETURNING id, name, email`,
+      [token, expires, email]
     );
     return result.rows[0] || null;
   }

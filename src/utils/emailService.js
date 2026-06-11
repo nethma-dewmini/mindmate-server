@@ -117,6 +117,30 @@ const sendExpertApplicationAdminNotification = async (app) => {
 };
 
 /**
+ * Send email verification link to new students
+ */
+const sendVerificationEmail = async (email, name, verifyLink) => {
+  const subject = "MindMate - Verify Your University Email";
+  const text = `Hello ${name},\n\nPlease verify your University of Moratuwa email address by visiting this link: ${verifyLink}\n\nThis link is valid for 24 hours.\n\nBest regards,\nThe MindMate Team`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #5bb5a1; border-bottom: 2px solid #5bb5a1; padding-bottom: 10px;">Verify Your Email Address</h2>
+      <p>Hello ${name},</p>
+      <p>Thank you for registering on MindMate! To complete your student registration, we need to verify your university email address.</p>
+      <div style="margin: 30px 0; text-align: center;">
+        <a href="${verifyLink}" style="background-color: #5bb5a1; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">Verify Email</a>
+      </div>
+      <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+      <p style="word-break: break-all; color: #4a5568;">${verifyLink}</p>
+      <p>This link is valid for 24 hours. If you did not create a MindMate account, you can safely ignore this email.</p>
+      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
+      <p style="font-size: 12px; color: #a0aec0; text-align: center;">The MindMate Team</p>
+    </div>
+  `;
+  return await sendMail({ to: email, subject, text, html });
+};
+
+/**
  * Send approval email to approved expert
  */
 const sendExpertApplicationApprovedEmail = async (email, name) => {
@@ -429,6 +453,7 @@ const sendSessionCancelationEmail = async ({
 
 module.exports = {
   sendPasswordResetEmail,
+  sendVerificationEmail,
   sendExpertApplicationAdminNotification,
   sendExpertApplicationApprovedEmail,
   sendExpertRevokedEmail,

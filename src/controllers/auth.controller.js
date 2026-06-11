@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendPasswordResetEmail } = require("../utils/emailService");
+const { sendPasswordResetEmail, sendVerificationEmail } = require("../utils/emailService");
 
 // Import Models
 const User = require("../models/User");
@@ -127,7 +127,21 @@ exports.register = async (req, res, next) => {
 
     let resultUser;
     if (role === "student") {
-      resultUser = await User.createStudent({ name, email: normalizedEmail, passwordHash: hash, role, registrationNo: normalizedRegistrationNo });
+      const verificationToken = generateToken();
+      const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      resultUser = await User.createStudent({
+        name,
+        email: normalizedEmail,
+        passwordHash: hash,
+        role,
+        registrationNo: normalizedRegistrationNo,
+        verificationToken,
+        verificationTokenExpires
+      });
+      
+      const clientOrigin = process.env.CLIENT_ORIGIN || process.env.FRONTEND_URL || "http://localhost:3000";
+      const verifyLink = `${clientOrigin.replace(/\/$/, "")}/verify-email?token=${verificationToken}`;
+      sendVerificationEmail(normalizedEmail, name, verifyLink).catch(err => console.error("Error sending verification email:", err));
     } else {
       resultUser = await User.createExpertOrAdmin({ name, email: normalizedEmail, passwordHash: hash, role });
     }
@@ -144,7 +158,7 @@ exports.register = async (req, res, next) => {
     }
 
     if (role === "student") {
-      return res.status(201).json({ status: "ok", message: "Registration successful", user: resultUser });
+      return res.status(201).json({ status: "ok", message: "Registration successful. Please check your email to verify your account.", user: resultUser });
     }
 
     const token = jwt.sign(
@@ -181,6 +195,10 @@ exports.login = async (req, res, next) => {
     const passwordMatch = bcrypt.compareSync(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ status: "error", message: "Invalid email or password" });
+    }
+
+    if (user.role === "student" && user.is_verified === false) {
+      return res.status(403).json({ status: "error", code: "UNVERIFIED_EMAIL", message: "Please verify your email address to log in." });
     }
 
     const { password_hash, ...userWithoutPassword } = user;
@@ -281,6 +299,59 @@ exports.resetPassword = async (req, res, next) => {
     await PasswordReset.markAsUsed(reset.id);
 
     return res.status(200).json({ status: "ok", message: "Password has been reset" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ status: "error", message: "Verification token is required" });
+    }
+
+    const user = await User.verifyEmailToken(token);
+    
+    if (!user) {
+      return res.status(400).json({ status: "error", message: "Invalid or expired verification token" });
+    }
+
+    return res.status(200).json({ status: "ok", message: "Email verified successfully", user });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.resendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ status: "error", message: "Email is required" });
+    }
+
+    const normalizedEmail = normalizeStudentEmail(email);
+    const user = await User.findByEmail(normalizedEmail);
+    
+    if (!user) {
+      return res.status(400).json({ status: "error", message: "User not found" });
+    }
+
+    if (user.is_verified) {
+      return res.status(400).json({ status: "error", message: "Email is already verified" });
+    }
+
+    const token = generateToken();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    await User.setNewVerificationToken(normalizedEmail, token, expiresAt);
+
+    const clientOrigin = process.env.CLIENT_ORIGIN || process.env.FRONTEND_URL || "http://localhost:3000";
+    const verifyLink = `${clientOrigin.replace(/\/$/, "")}/verify-email?token=${token}`;
+
+    await sendVerificationEmail(normalizedEmail, user.name, verifyLink);
+
+    return res.status(200).json({ status: "ok", message: "Verification email resent successfully" });
   } catch (err) {
     next(err);
   }
