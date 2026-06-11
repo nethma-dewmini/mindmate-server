@@ -2,6 +2,7 @@ const fs = require("fs");
 const {
   sendExpertApplicationAdminNotification,
   sendExpertApplicationApprovedEmail,
+  sendExpertRevokedEmail,
 } = require("../utils/emailService");
 const supabaseService = require("../utils/supabaseService");
 const ExpertApplication = require("../models/ExpertApplication");
@@ -160,6 +161,11 @@ exports.updateStatus = async (req, res, next) => {
       return res.status(400).json({ status: "error", message: "Invalid status" });
     }
 
+    const existingApp = await ExpertApplication.findById(id);
+    if (!existingApp) {
+      return res.status(404).json({ status: "error", message: "Application not found" });
+    }
+
     const adminId = req.user && req.user.id ? req.user.id : null;
     const application = await ExpertApplication.updateStatus(id, normalized, admin_notes, adminId);
 
@@ -172,8 +178,14 @@ exports.updateStatus = async (req, res, next) => {
         console.error("Error sending expert approval email:", err)
       );
     } else if (normalized === "rejected") {
-      const db = require('../db');
-      await db.query("DELETE FROM unistudents WHERE LOWER(email) = LOWER($1) AND role = 'expert'", [application.email]);
+      if (existingApp.status === "approved") {
+        const db = require('../db');
+        await db.query("DELETE FROM unistudents WHERE LOWER(email) = LOWER($1) AND role = 'expert'", [application.email]);
+        
+        sendExpertRevokedEmail(application.email, application.name, admin_notes).catch((err) =>
+          console.error("Error sending expert revocation email:", err)
+        );
+      }
     }
 
     return res.status(200).json({ status: "ok", application });
