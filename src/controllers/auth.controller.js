@@ -406,8 +406,14 @@ exports.sendRegistrationOtp = async (req, res, next) => {
 
     await RegistrationOtp.createOtp(normalizedEmail, normalizedRegistrationNo, otpCode, expiresAt);
 
-    // Send email with OTP code
-    await sendRegistrationOtpEmail(normalizedEmail, name, otpCode);
+    // Send email with OTP code and await execution (crucial for serverless Vercel environment)
+    const sent = await sendRegistrationOtpEmail(normalizedEmail, name, otpCode);
+    if (!sent) {
+      return res.status(500).json({
+        status: "error",
+        message: "Failed to send verification email. Please check your email configuration or server logs.",
+      });
+    }
 
     return res.status(200).json({
       status: "ok",
