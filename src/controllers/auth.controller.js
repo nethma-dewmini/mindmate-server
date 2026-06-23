@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendPasswordResetEmail, sendVerificationEmail } = require("../utils/emailService");
+const { sendPasswordResetEmail, sendVerificationEmail, sendRegistrationOtpEmail } = require("../utils/emailService");
 
 // Import Models
 const User = require("../models/User");
@@ -9,6 +9,7 @@ const Expert = require("../models/Expert");
 const StudentRegistry = require("../models/StudentRegistry");
 const ExpertApplication = require("../models/ExpertApplication");
 const PasswordReset = require("../models/PasswordReset");
+const RegistrationOtp = require("../models/RegistrationOtp");
 
 // --- Utility Functions ---
 async function sendResetEmail(email, link) {
@@ -95,6 +96,15 @@ exports.register = async (req, res, next) => {
           message: "No matching student record was found for the entered registration number and email.",
         });
       }
+
+      // Enforce pre-signup OTP verification
+      const isOtpVerified = await RegistrationOtp.isEmailVerified(normalizedEmail, normalizedRegistrationNo);
+      if (!isOtpVerified) {
+        return res.status(400).json({
+          status: "error",
+          message: "Please verify your email using a verification code before creating your account.",
+        });
+      }
     }
 
     let approvedExpertApplication = null;
@@ -127,21 +137,16 @@ exports.register = async (req, res, next) => {
 
     let resultUser;
     if (role === "student") {
-      const verificationToken = generateToken();
-      const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       resultUser = await User.createStudent({
         name,
         email: normalizedEmail,
         passwordHash: hash,
         role,
         registrationNo: normalizedRegistrationNo,
-        verificationToken,
-        verificationTokenExpires
+        verificationToken: null,
+        verificationTokenExpires: null,
+        isVerified: true
       });
-      
-      const clientOrigin = process.env.CLIENT_ORIGIN || process.env.FRONTEND_URL || "http://localhost:3000";
-      const verifyLink = `${clientOrigin.replace(/\/$/, "")}/verify-email?token=${verificationToken}`;
-      sendVerificationEmail(normalizedEmail, name, verifyLink).catch(err => console.error("Error sending verification email:", err));
     } else {
       resultUser = await User.createExpertOrAdmin({ name, email: normalizedEmail, passwordHash: hash, role });
     }
@@ -155,10 +160,6 @@ exports.register = async (req, res, next) => {
         qualifications: qualifications || null,
         licenseNumber: licenseNumber || null,
       });
-    }
-
-    if (role === "student") {
-      return res.status(201).json({ status: "ok", message: "Registration successful. Please check your email to verify your account.", user: resultUser });
     }
 
     const token = jwt.sign(
@@ -352,6 +353,95 @@ exports.resendVerification = async (req, res, next) => {
     await sendVerificationEmail(normalizedEmail, user.name, verifyLink);
 
     return res.status(200).json({ status: "ok", message: "Verification email resent successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.sendRegistrationOtp = async (req, res, next) => {
+  try {
+    const { name, email, studentId } = req.body || {};
+
+    if (!name || !email || !studentId) {
+      return res.status(400).json({ status: "error", message: "Name, email, and Registration No are required" });
+    }
+
+    const normalizedEmail = normalizeStudentEmail(email);
+    if (!normalizedEmail.endsWith("@uom.lk")) {
+      return res.status(400).json({ status: "error", message: "Must use a valid University of Moratuwa email (@uom.lk)" });
+    }
+
+    const normalizedRegistrationNo = normalizeRegistrationNo(studentId);
+    if (!/^\d{6}[A-Z]$/.test(normalizedRegistrationNo)) {
+      return res.status(400).json({ status: "error", message: "Invalid Registration No. The last letter must be a capital letter." });
+    }
+
+    if (!getExpectedUomIndexLetter(normalizedRegistrationNo)) {
+      return res.status(400).json({ status: "error", message: "Invalid Registration No." });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findByEmail(normalizedEmail);
+    if (existingUser) {
+      return res.status(409).json({ status: "error", message: "User with that email already exists" });
+    }
+
+    const existingRegistration = await User.findByRegistrationNo(normalizedRegistrationNo);
+    if (existingRegistration) {
+      return res.status(409).json({ status: "error", message: "This Registration No is already registered" });
+    }
+
+    // Verify against the Student Registry
+    const registryStudent = await StudentRegistry.findByRegNoAndEmail(normalizedRegistrationNo, normalizedEmail);
+    if (!registryStudent) {
+      return res.status(403).json({
+        status: "error",
+        message: "No matching student record was found for the entered registration number and email.",
+      });
+    }
+
+    // Generate 6-digit random code
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await RegistrationOtp.createOtp(normalizedEmail, normalizedRegistrationNo, otpCode, expiresAt);
+
+    // Send email with OTP code
+    await sendRegistrationOtpEmail(normalizedEmail, name, otpCode);
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Verification code sent successfully to your university email address.",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.verifyRegistrationOtp = async (req, res, next) => {
+  try {
+    const { email, studentId, otpCode } = req.body || {};
+
+    if (!email || !studentId || !otpCode) {
+      return res.status(400).json({ status: "error", message: "Email, Registration No, and verification code are required" });
+    }
+
+    const normalizedEmail = normalizeStudentEmail(email);
+    const normalizedRegistrationNo = normalizeRegistrationNo(studentId);
+
+    const isVerified = await RegistrationOtp.verifyOtp(normalizedEmail, normalizedRegistrationNo, otpCode);
+
+    if (!isVerified) {
+      return res.status(400).json({
+        status: "error",
+        message: "Invalid or expired verification code.",
+      });
+    }
+
+    return res.status(200).json({
+      status: "ok",
+      message: "Email address verified successfully.",
+    });
   } catch (err) {
     next(err);
   }
