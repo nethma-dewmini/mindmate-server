@@ -6,5 +6,6 @@ const router = express.Router();
 
 router.get("/", requireAuth, requireAdmin, studentRegistryController.getRegistry);
 router.post("/", requireAuth, requireAdmin, studentRegistryController.createRegistryEntry);
+router.delete("/:id", requireAuth, requireAdmin, studentRegistryController.deleteRegistryEntry);
 
 module.exports = router;

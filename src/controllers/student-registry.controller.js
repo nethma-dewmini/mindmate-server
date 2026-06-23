@@ -77,3 +77,22 @@ exports.createRegistryEntry = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.deleteRegistryEntry = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const deleted = await StudentRegistry.delete(id);
+    if (!deleted) {
+      return res.status(404).json({
+        status: "error",
+        message: "Registry entry not found",
+      });
+    }
+    return res.json({
+      status: "ok",
+      message: "Student registry entry deleted successfully",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
