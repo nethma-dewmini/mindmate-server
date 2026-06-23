@@ -37,6 +37,22 @@ class StudentRegistry {
     );
     return result.rows[0];
   }
+
+  static async delete(id) {
+    const result = await db.query(
+      `DELETE FROM student_registry WHERE id = $1 RETURNING id`,
+      [id]
+    );
+    return result.rowCount > 0;
+  }
+
+  static async bulkDelete(ids) {
+    const result = await db.query(
+      `DELETE FROM student_registry WHERE id = ANY($1::uuid[]) RETURNING id`,
+      [ids]
+    );
+    return result.rowCount;
+  }
 }
 
 module.exports = StudentRegistry;
