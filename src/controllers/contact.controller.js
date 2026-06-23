@@ -12,9 +12,11 @@ exports.submitContactForm = async (req, res, next) => {
 
     const newContact = await ContactMessage.create({ name, email, subject, message });
 
-    sendContactSubmissionEmail({ name, email, subject, message }).catch((err) => {
+    try {
+      await sendContactSubmissionEmail({ name, email, subject, message });
+    } catch (err) {
       console.error("Failed to send contact submission email notification:", err);
-    });
+    }
 
     res.status(201).json({
       status: "success",

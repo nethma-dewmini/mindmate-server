@@ -75,12 +75,12 @@ exports.apply = async (req, res, next) => {
 
     const application = await ExpertApplication.create({ name, title, email, specialization, documents });
 
-    sendExpertApplicationAdminNotification({
+    await sendExpertApplicationAdminNotification({
       name: application.name,
       title: application.title,
       email: application.email,
       specialization: specialization || null,
-    }).catch((err) => console.error("Error sending admin notification email:", err));
+    });
 
     return res.status(201).json({
       status: "ok",
@@ -174,17 +174,13 @@ exports.updateStatus = async (req, res, next) => {
     }
 
     if (normalized === "approved") {
-      sendExpertApplicationApprovedEmail(application.email, application.name).catch((err) =>
-        console.error("Error sending expert approval email:", err)
-      );
+      await sendExpertApplicationApprovedEmail(application.email, application.name);
     } else if (normalized === "rejected") {
       if (existingApp.status === "approved") {
         const db = require('../db');
         await db.query("DELETE FROM unistudents WHERE LOWER(email) = LOWER($1) AND role = 'expert'", [application.email]);
         
-        sendExpertRevokedEmail(application.email, application.name, admin_notes).catch((err) =>
-          console.error("Error sending expert revocation email:", err)
-        );
+        await sendExpertRevokedEmail(application.email, application.name, admin_notes);
       }
     }
 

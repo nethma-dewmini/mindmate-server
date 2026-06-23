@@ -63,19 +63,17 @@ exports.createSession = async (req, res, next) => {
       meetingDetails: meeting_details ? meeting_details.trim() : null
     });
 
-    (async () => {
-      try {
-        const expert = await User.findByIdWithDetails(req.user.id);
-        const { students } = await User.getAllStudents(10000, 0, ""); // Fetch all
+    try {
+      const expert = await User.findByIdWithDetails(req.user.id);
+      const { students } = await User.getAllStudents(10000, 0, ""); // Fetch all
 
-        if (expert && students.length > 0) {
-          const expertName = expert.name;
-          await broadcastNewSessionEmail({ session, expertName, students });
-        }
-      } catch (err) {
-        console.error("❌ Failed to initiate session scheduling email broadcast:", err);
+      if (expert && students.length > 0) {
+        const expertName = expert.name;
+        await broadcastNewSessionEmail({ session, expertName, students });
       }
-    })();
+    } catch (err) {
+      console.error("❌ Failed to initiate session scheduling email broadcast:", err);
+    }
 
     return res.status(201).json({
       status: "ok",
@@ -153,7 +151,7 @@ exports.bookSession = async (req, res, next) => {
         const sessionInfo = await GroupSession.getSessionInfoWithExpert(sessionId);
 
         if (student && sessionInfo) {
-          sendSessionBookingEmail({
+          await sendSessionBookingEmail({
             studentEmail: student.email,
             studentName: student.name,
             expertName: sessionInfo.expert_name,
@@ -162,10 +160,10 @@ exports.bookSession = async (req, res, next) => {
             sessionTime: sessionInfo.session_time,
             meetingLink: sessionInfo.meeting_link,
             meetingDetails: sessionInfo.meeting_details,
-          }).catch((err) => console.error("Error sending session booking confirmation email:", err));
+          });
         }
       } catch (err) {
-        console.error("Error preparing session booking confirmation email:", err);
+        console.error("Error sending session booking confirmation email:", err);
       }
     }
 
@@ -201,18 +199,20 @@ exports.cancelBooking = async (req, res, next) => {
 
     await GroupSession.cancelBooking(sessionId, req.user.id);
 
-    sendSessionCancelationEmail({
-      expertEmail: bookingDetails.expert_email,
-      expertName: bookingDetails.expert_name,
-      studentName: bookingDetails.student_name,
-      studentEmail: bookingDetails.student_email,
-      topic: bookingDetails.topic,
-      sessionDate: bookingDetails.session_date,
-      sessionTime: bookingDetails.session_time,
-      reason: reason ? reason.trim() : "",
-    }).catch((err) => {
+    try {
+      await sendSessionCancelationEmail({
+        expertEmail: bookingDetails.expert_email,
+        expertName: bookingDetails.expert_name,
+        studentName: bookingDetails.student_name,
+        studentEmail: bookingDetails.student_email,
+        topic: bookingDetails.topic,
+        sessionDate: bookingDetails.session_date,
+        sessionTime: bookingDetails.session_time,
+        reason: reason ? reason.trim() : "",
+      });
+    } catch (err) {
       console.error("❌ Failed to send session cancellation email:", err);
-    });
+    }
 
     return res.status(200).json({
       status: "ok",
