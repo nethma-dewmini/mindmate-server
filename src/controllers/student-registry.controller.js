@@ -96,3 +96,24 @@ exports.deleteRegistryEntry = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.bulkDeleteRegistryEntries = async (req, res, next) => {
+  try {
+    const { ids } = req.body || {};
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "An array of ids is required for bulk deletion",
+      });
+    }
+
+    const count = await StudentRegistry.bulkDelete(ids);
+    return res.json({
+      status: "ok",
+      message: `${count} student registry entries deleted successfully`,
+      count,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

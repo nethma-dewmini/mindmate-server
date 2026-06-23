@@ -45,6 +45,14 @@ class StudentRegistry {
     );
     return result.rowCount > 0;
   }
+
+  static async bulkDelete(ids) {
+    const result = await db.query(
+      `DELETE FROM student_registry WHERE id = ANY($1::uuid[]) RETURNING id`,
+      [ids]
+    );
+    return result.rowCount;
+  }
 }
 
 module.exports = StudentRegistry;
