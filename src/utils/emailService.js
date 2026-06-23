@@ -451,6 +451,32 @@ const sendSessionCancelationEmail = async ({
   return await sendMail({ to: expertEmail, subject, text, html });
 };
 
+/**
+ * Send OTP verification code for student registration
+ */
+const sendRegistrationOtpEmail = async (email, name, otp) => {
+  const subject = "MindMate - Student Registration Verification Code";
+  const text = `Hello ${name},\n\nYour 6-digit registration verification code is: ${otp}\n\nThis code is valid for 10 minutes.\n\nBest regards,\nThe MindMate Team`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h2 style="color: #2c6e5f; border-bottom: 2px solid #2c6e5f; padding-bottom: 10px; margin-top: 0;">Registration Verification Code</h2>
+      <p>Hello ${name},</p>
+      <p>Thank you for starting your registration on MindMate! To verify your University of Moratuwa student email address, please use the following 6-digit verification code:</p>
+      
+      <div style="margin: 30px 0; text-align: center;">
+        <div style="display: inline-block; background-color: #f0f7f5; border: 2px dashed #2c6e5f; padding: 15px 30px; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2c6e5f; border-radius: 12px;">
+          ${otp}
+        </div>
+      </div>
+      
+      <p style="color: #718096; font-size: 14px;">This code is valid for <strong>10 minutes</strong>. If you did not request this code, you can safely ignore this email.</p>
+      <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-top: 30px;" />
+      <p style="font-size: 12px; color: #a0aec0; text-align: center;">The MindMate Support Team</p>
+    </div>
+  `;
+  return await sendMail({ to: email, subject, text, html });
+};
+
 module.exports = {
   sendPasswordResetEmail,
   sendVerificationEmail,
@@ -461,5 +487,6 @@ module.exports = {
   sendSessionCancelationEmail,
   broadcastNewSessionEmail,
   sendContactSubmissionEmail,
+  sendRegistrationOtpEmail,
 };
 

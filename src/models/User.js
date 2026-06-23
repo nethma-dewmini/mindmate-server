@@ -19,12 +19,12 @@ class User {
     return result.rows[0] || null;
   }
 
-  static async createStudent({ name, email, passwordHash, role, registrationNo, verificationToken, verificationTokenExpires }) {
+  static async createStudent({ name, email, passwordHash, role, registrationNo, verificationToken, verificationTokenExpires, isVerified = false }) {
     const result = await db.query(
       `INSERT INTO unistudents (name, email, password_hash, role, registration_no, is_verified, verification_token, verification_token_expires, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, false, $6, $7, NOW(), NOW())
+       VALUES ($1, $2, $3, $4, $5, $8, $6, $7, NOW(), NOW())
        RETURNING id, name, email, role, registration_no, created_at`,
-      [name, email, passwordHash, role, registrationNo, verificationToken, verificationTokenExpires]
+      [name, email, passwordHash, role, registrationNo, verificationToken, verificationTokenExpires, isVerified]
     );
     return result.rows[0];
   }

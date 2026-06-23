@@ -25,4 +25,8 @@ router.post("/verify-email", authController.verifyEmail);
 // Resend email verification link
 router.post("/resend-verification", authController.resendVerification);
 
+// Registration OTP Verification
+router.post("/send-registration-otp", authController.sendRegistrationOtp);
+router.post("/verify-registration-otp", authController.verifyRegistrationOtp);
+
 module.exports = router;
