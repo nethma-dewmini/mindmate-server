@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const { JWT_SECRET } = require("../config/jwt");
 
 function getTokenFromRequest(req) {
   const authHeader = req.headers.authorization || "";
@@ -22,8 +23,9 @@ function requireAuth(req, res, next) {
 
     const payload = jwt.verify(
       token,
-      process.env.JWT_SECRET || "dev_jwt_secret",
+      JWT_SECRET,
     );
+
 
     req.user = payload;
     return next();

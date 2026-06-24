@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const Assessment = require("../models/Assessment");
+const { JWT_SECRET } = require("../config/jwt");
 
 function slugify(value) {
   return String(value || "")
@@ -128,7 +129,7 @@ exports.getAssessmentById = async (req, res, next) => {
       try {
         req.user = jwt.verify(
           authHeader.slice(7).trim(),
-          process.env.JWT_SECRET || "dev_jwt_secret"
+          JWT_SECRET
         );
       } catch (error) {
         return res.status(401).json({

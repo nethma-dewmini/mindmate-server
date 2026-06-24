@@ -1,6 +1,7 @@
 const GroupSession = require("../models/GroupSession");
 const User = require("../models/User");
 const { sendSessionBookingEmail, broadcastNewSessionEmail, sendSessionCancelationEmail } = require("../utils/emailService");
+const { JWT_SECRET } = require("../config/jwt");
 
 function getUserIdFromReq(req) {
   try {
@@ -8,7 +9,7 @@ function getUserIdFromReq(req) {
     if (authHeader.startsWith("Bearer ")) {
       const jwt = require("jsonwebtoken");
       const token = authHeader.slice(7).trim();
-      const payload = jwt.verify(token, process.env.JWT_SECRET || "dev_jwt_secret");
+      const payload = jwt.verify(token, JWT_SECRET);
       return payload.id;
     }
   } catch (err) {}

@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { JWT_SECRET } = require("../config/jwt");
 const { sendPasswordResetEmail, sendVerificationEmail, sendRegistrationOtpEmail } = require("../utils/emailService");
 
 // Import Models
@@ -164,7 +165,7 @@ exports.register = async (req, res, next) => {
 
     const token = jwt.sign(
       { id: resultUser.id, role: resultUser.role || role },
-      process.env.JWT_SECRET || "dev_jwt_secret",
+      JWT_SECRET,
       { expiresIn: "7d" }
     );
 
@@ -205,7 +206,7 @@ exports.login = async (req, res, next) => {
     const { password_hash, ...userWithoutPassword } = user;
     const token = jwt.sign(
       { id: user.id, role: user.role },
-      process.env.JWT_SECRET || "dev_jwt_secret",
+      JWT_SECRET,
       { expiresIn: "7d" }
     );
 
